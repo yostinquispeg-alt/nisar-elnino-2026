@@ -46,7 +46,8 @@ def capas_mapa(tabla: pd.DataFrame, mapas: list, modo: str, salida: Path):
     return out
 
 
-def escribir(story: pd.DataFrame, modo: str, salida: Path, capas=None, serie=None, lluvia=None, extra=None):
+def escribir(story: pd.DataFrame, modo: str, salida: Path, capas=None, serie=None, lluvia=None, extra=None,
+             lluvia_imerg=None, corroboracion=None):
     salida.mkdir(parents=True, exist_ok=True)
     csv = salida / f"storytelling_{modo.lower()}.csv"
     story.to_csv(csv, index=False)
@@ -65,6 +66,8 @@ def escribir(story: pd.DataFrame, modo: str, salida: Path, capas=None, serie=Non
                     for c in CRONICA],
         "contexto": [{**c, "url": NOTICIAS.get(c["id"])} for c in CONTEXTO],
         "lluvia": lluvia or {},
+        "lluvia_imerg": lluvia_imerg or {},
+        "corroboracion": corroboracion or [],
         "extra": extra or {},
     }
     js = salida / f"nisar_manifest_{modo.lower()}.js"

@@ -319,7 +319,7 @@ function productoCercano(zona, prod, t) {
 }
 
 function lluviaEntre(zona, tA, tB) {
-  const l = (M.lluvia || {})[zona];
+  const l = ((M.lluvia_imerg || {})[zona]) || (M.lluvia || {})[zona];
   if (!l) return null;
   let tot = 0, max = 0, dmax = null, n = 0;
   l.fechas.forEach((f, k) => { const t = Date.parse(f + 'T12:00:00-05:00'); if (t > tA && t <= tB && l.mm[k] != null) { tot += l.mm[k]; n++; if (l.mm[k] > max) { max = l.mm[k]; dmax = f; } } });
@@ -347,7 +347,7 @@ function cronicaHTML(zona, tA, tB, nisar, qa) {
   h += '<div class="nisar">' +
     `<div><small>NISAR: cambio de agua</small><b>${nisar.dagua == null ? '—' : (nisar.dagua >= 0 ? '+' : '') + fmt(nisar.dagua)} km²</b></div>` +
     `<div><small>Suelo más húmedo</small><b>${fmt(nisar.suelo)} km²</b></div>` +
-    `<div><small>Lluvia (reanálisis)</small><b>${ll ? fmt(ll.tot, 0) + ' mm' : '—'}</b>${ll && ll.max > 0 ? `<small>máx ${fmt(ll.max, 0)} mm el ${fechaCorta(ll.dmax + 'T12:00:00-05:00')}</small>` : ''}</div></div>`;
+    `<div><small>Lluvia ${((M.lluvia_imerg || {})[zona]) ? (/CHIRPS/.test(M.lluvia_imerg[zona].fuente || '') ? '(CHIRPS)' : '(IMERG)') : '(reanálisis)'}</small><b>${ll ? fmt(ll.tot, 0) + ' mm' : '—'}</b>${ll && ll.max > 0 ? `<small>máx ${fmt(ll.max, 0)} mm el ${fechaCorta(ll.dmax + 'T12:00:00-05:00')}</small>` : ''}</div></div>`;
   if (!evs.length && !notas.length) h += '<div class="meta">Sin noticias registradas en este periodo para esta zona.</div>';
   evs.forEach((e) => { h += `<div class="nt"><b>${e.id}</b> · ${fecha(e.inicio)}<br>${e.titular} <a href="${M.noticias[e.fuente]}" target="_blank" rel="noopener">fuente ${e.fuente}</a></div>`; });
   notas.filter((c) => !evs.some((e) => e.fuente === c.id)).forEach((c) => {
@@ -500,6 +500,9 @@ function graficoSerie() {
   if ((ex.SME2 || []).length) datasets.push(L_('Humedad SME2 (m³/m³ ×100)', ex.SME2.map((f) => ({ x: Date.parse(f.fecha), y: f.metricas.humedad_med_m3m3 == null ? null : f.metricas.humedad_med_m3m3 * 100 })), '#4fb3bf', { borderDash: [5, 3] }));
   if ((ex.GUNW || []).length) datasets.push(L_('Coherencia GUNW (×100)', ex.GUNW.map((f) => ({ x: Date.parse(f.fecha), y: f.metricas.coherencia_med == null ? null : f.metricas.coherencia_med * 100 })), '#f0a35e', { borderDash: [2, 3] }));
   if (barrasLluvia.length) datasets.push({ type: 'bar', label: 'Lluvia diaria, reanálisis Open-Meteo (mm)', data: barrasLluvia, backgroundColor: 'rgba(120,170,255,.35)', yAxisID: 'y1', barThickness: 3 });
+  const im = (M.lluvia_imerg || {})[s.zona];
+  const barrasImerg = im ? im.fechas.map((f, k) => ({ x: Date.parse(f + 'T12:00:00-05:00') + 6 * 3600e3, y: im.mm[k] })).filter((p) => p.x >= t0 && p.x <= t1) : [];
+  if (barrasImerg.length) datasets.push({ type: 'bar', label: 'Lluvia satelital ' + (im.fuente || 'NASA GPM IMERG') + ' (mm)', data: barrasImerg, backgroundColor: 'rgba(30,90,220,.75)', yAxisID: 'y1', barThickness: 3 });
   if (chart) chart.destroy();
   const fmtX = (v) => new Date(v).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' });
   chart = new Chart($('chart'), {
@@ -513,7 +516,7 @@ function graficoSerie() {
       scales: {
         x: { type: 'linear', min: t0, max: t1, ticks: { color: '#8b9bab', font: { size: 10 }, callback: fmtX, maxTicksLimit: 8 }, grid: { color: '#1a2633' } },
         y: { position: 'left', ticks: { color: '#8b9bab' }, grid: { color: '#1a2633' } },
-        y1: { position: 'right', display: barrasLluvia.length > 0, ticks: { color: '#7aa6ff' }, grid: { display: false }, title: { display: true, text: 'mm/día', color: '#7aa6ff', font: { size: 10 } } },
+        y1: { position: 'right', display: barrasLluvia.length > 0 || barrasImerg.length > 0, ticks: { color: '#7aa6ff' }, grid: { display: false }, title: { display: true, text: 'mm/día', color: '#7aa6ff', font: { size: 10 } } },
       },
       plugins: { legend: { labels: { color: '#8b9bab', boxWidth: 10, font: { size: 10 } } },
         tooltip: { callbacks: { title: (it) => fmtX(it[0].parsed.x) } } } },

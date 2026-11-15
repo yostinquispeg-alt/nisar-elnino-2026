@@ -23,6 +23,8 @@ from nisar_cn.pipeline import ejecutar
 from nisar_cn.serie import ZONAS_CON_EVENTO, serie_temporal
 from nisar_cn.lluvia import lluvia_todas
 from nisar_cn.extra import productos_extra
+from nisar_cn.corroboracion import chirps_zonas, imerg_zonas, matriz_correspondencia
+import json
 
 
 
@@ -69,7 +71,26 @@ def main():
         if not args.sin_extra and args.modo == "REAL":
             print("\nProductos NISAR adicionales: SME2 (humedad del suelo) y GUNW (coherencia):")
             extra = productos_extra(sorted({s["zona"] for s in serie}) or ZONAS_CON_EVENTO, RAIZ / "cache", RAIZ / "salidas")
-        csv, js = escribir(storytelling(tabla, args.modo), args.modo, RAIZ / "salidas", capas, serie, lluvia, extra)
+        imerg, chirps, corr = {}, {}, []
+        if args.modo == "REAL":
+            print("\nLluvia satelital NASA GPM IMERG (Late, diario):")
+            try:
+                imerg = imerg_zonas(RAIZ / "cache")
+            except Exception as e:
+                print(f"   IMERG no disponible ({type(e).__name__}: {e})")
+            print("\nLluvia CHIRPS v3 «sat» (abierta, estaciones + IMERG):")
+            try:
+                chirps = chirps_zonas(RAIZ / "cache")
+            except Exception as e:
+                print(f"   CHIRPS no disponible ({type(e).__name__}: {e})")
+        if serie:
+            mc = matriz_correspondencia(serie, lluvia, imerg, chirps)
+            mc.to_csv(RAIZ / "salidas" / f"correspondencia_{args.modo.lower()}.csv", index=False)
+            print("\nCorrespondencia NISAR ↔ otras fuentes:\n", mc["veredicto"].value_counts().to_string())
+            corr = json.loads(mc.to_json(orient="records", date_format="iso"))
+        # El mapa muestra la lluvia satelital disponible: IMERG si se pudo leer; si no, CHIRPS (lleva su propia "fuente").
+        csv, js = escribir(storytelling(tabla, args.modo), args.modo, RAIZ / "salidas", capas, serie, lluvia, extra,
+                           imerg or chirps, corr)
         print(f"\nEscrito: {csv.name}, {js.name}, {len(capas)} pares y {len(serie)} series con GIF en salidas/")
         print("Mapa:", MAPA)
         webbrowser.open(MAPA.as_uri())
