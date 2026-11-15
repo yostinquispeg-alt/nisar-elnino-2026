@@ -3,7 +3,8 @@
 - Capas y rutas: R2 [V] (HHHH, HVHV, rtcGammaToSigmaFactor, numberOfLooks, mask; píxel 10/20 m según ancho de banda).
 - `find_grid` y recorte por ventana: adaptados del código del equipo (R15 [V]).
 - incidenceAngle como cubo de metadatos: NISAR Data User Guide, página «Metadata», tabla 1 [V].
-- [?] Significado de los valores de `mask`: requiere la especificación JPL D-102274 Rev. F, sección 4.3.
+- Valores de `mask`: 0 inválido o parcialmente enfocado, 1–5 válido (sub-swath), 255 relleno: JPL D-102274 Rev D,
+  sec. 4.3.3 (R16 [V], releída el 15 nov 2026). Se aplica en limpieza.mascara_valida.
 """
 import re
 from pathlib import Path
@@ -30,7 +31,7 @@ def buscar_dataset(h5, patron):
 def rutas_incidencia(h5):
     """Busca el cubo incidenceAngle solo en el grupo de metadatos de geometría, sin recorrer todo el archivo.
     Recorrer el HDF5 completo por streaming obliga a bajar cientos de MB de metadatos.
-    [?] Ruta del grupo: falta confirmarla en la especificación JPL D-102274."""
+    Ruta del grupo `metadata/radarGrid`: R16, sec. 3.2.4 y tabla 5-1 [V]."""
     for band in ("LSAR", "SSAR"):
         for grp in (f"/science/{band}/GCOV/metadata/radarGrid", f"/science/{band}/GCOV/metadata/geolocationGrid"):
             if grp in h5:
@@ -61,21 +62,41 @@ def _leer_ventana(h5, caja, margen_m):
         lee = lambda k: g[k][r0:r1, c0:c1].astype("float32") if k in g else None
         capas = {k: lee(k) for k in ("HHHH", "HVHV", "rtcGammaToSigmaFactor", "numberOfLooks", "mask")}
         inc = rutas_incidencia(h5)
-    return dict(capas=capas, x=x[c0:c1], y=y[r0:r1], dx=dx, dy=dy, epsg=epsg, rutas_incidencia=inc)
+        capas["theta_deg"], nota = _theta(h5, inc, x[c0:c1], y[r0:r1])
+    return dict(capas=capas, x=x[c0:c1], y=y[r0:r1], dx=dx, dy=dy, epsg=epsg, rutas_incidencia=inc, nota_theta=nota)
+
+
+def _theta(h5, inc, x, y):
+    """Interpola el cubo incidenceAngle a la ventana (limpieza.theta_desde_cubo). None si no se puede."""
+    if not inc:
+        return None, "sin cubo incidenceAngle en el producto"
+    try:
+        from .limpieza import theta_desde_cubo
+        th, alt = theta_desde_cubo(h5, inc[0], x, y)
+        return th, f"θ interpolado del cubo {inc[0]} (altura {alt:.0f} m)"
+    except Exception as e:
+        return None, f"no se pudo interpolar {inc[0]}: {type(e).__name__}: {e}"
+
+
+def completar_theta(L, h5):
+    """Para recortes guardados antes de existir el cálculo de θ: lee solo el cubo (pocos KB) y lo agrega."""
+    if L["capas"].get("theta_deg") is None and L.get("rutas_incidencia"):
+        L["capas"]["theta_deg"], L["nota_theta"] = _theta(h5, L["rutas_incidencia"], L["x"], L["y"])
+    return L
 
 
 def guardar_lectura(L, ruta: Path):
     np.savez_compressed(ruta, x=L["x"], y=L["y"], dx=L["dx"], dy=L["dy"], epsg=L["epsg"],
-                        inc=np.array(L["rutas_incidencia"], dtype=str),
+                        inc=np.array(L["rutas_incidencia"], dtype=str), nota_theta=np.array(L.get("nota_theta", "")),
                         **{f"c_{k}": v for k, v in L["capas"].items() if v is not None})
 
 
 def cargar_lectura(ruta: Path):
     z = np.load(ruta)
     capas = {k: (z[f"c_{k}"] if f"c_{k}" in z else None)
-             for k in ("HHHH", "HVHV", "rtcGammaToSigmaFactor", "numberOfLooks", "mask")}
+             for k in ("HHHH", "HVHV", "rtcGammaToSigmaFactor", "numberOfLooks", "mask", "theta_deg")}
     return dict(capas=capas, x=z["x"], y=z["y"], dx=float(z["dx"]), dy=float(z["dy"]), epsg=int(z["epsg"]),
-                rutas_incidencia=list(z["inc"]))
+                rutas_incidencia=list(z["inc"]), nota_theta=str(z["nota_theta"]) if "nota_theta" in z else "")
 
 
 def demo_h5(g, caja, zona, cache: Path, post=False):
@@ -106,7 +127,16 @@ def demo_h5(g, caja, zona, cache: Path, post=False):
         G["xCoordinates"] = x; G["yCoordinates"] = y
         G["HHHH"] = (10 ** (hh_db / 10)).astype("float32"); G["HVHV"] = (10 ** (hv_db / 10)).astype("float32")
         G["rtcGammaToSigmaFactor"] = np.full(X.shape, 0.9, "float32")
-        G["numberOfLooks"] = np.full(X.shape, 12, "float32"); G["mask"] = np.ones(X.shape, "uint8")
+        G["numberOfLooks"] = np.full(X.shape, 12, "float32")
+        mk = np.ones(X.shape, "uint8"); mk[:, :25] = 0; mk[:8, :] = 255          # borde inválido y relleno (R16)
+        G["mask"] = mk
+        # Cubo de ángulo de incidencia con la estructura de R16 (alto, y, x); valores sintéticos 33–47°.
+        R = h5.create_group("/science/LSAR/GCOV/metadata/radarGrid")
+        cx = np.linspace(x[0] - 5000, x[-1] + 5000, 12); cy = np.linspace(y[0] + 5000, y[-1] - 5000, 10)
+        alt = np.array([-500.0, 0.0, 500.0, 1500.0])
+        inc = 33 + 14 * (cx - cx[0]) / (cx[-1] - cx[0])
+        R["incidenceAngle"] = np.broadcast_to(inc[None, None, :], (len(alt), len(cy), len(cx))).astype("float32")
+        R["xCoordinates"] = cx; R["yCoordinates"] = cy; R["heightAboveEllipsoid"] = alt
     return p
 
 

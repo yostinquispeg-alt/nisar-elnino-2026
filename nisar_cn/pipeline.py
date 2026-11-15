@@ -57,8 +57,15 @@ def lectura_real(g, zona, cache: Path):
     cache.mkdir(parents=True, exist_ok=True)
     ruta = cache / f"{g['nombre']}_{zona}.npz"
     if ruta.exists():
-        _log(f"      {g['nombre'][:60]}… {zona}: desde caché")
-        return cargar_lectura(ruta)
+        L = cargar_lectura(ruta)
+        if L["capas"].get("theta_deg") is None and L["rutas_incidencia"] and not L.get("nota_theta"):
+            from .lectura import completar_theta
+            _log(f"      {g['nombre'][:60]}… {zona}: caché + leyendo solo el cubo de ángulo de incidencia")
+            L = completar_theta(L, _h5_remoto(g))
+            guardar_lectura(L, ruta)
+        else:
+            _log(f"      {g['nombre'][:60]}… {zona}: desde caché")
+        return L
     t0 = time.time()
     _log(f"      leyendo {g['nombre'][:60]}… ({zona})")
     L = leer_ventana(_h5_remoto(g), bbox(zona))

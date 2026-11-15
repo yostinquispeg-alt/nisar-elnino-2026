@@ -16,6 +16,7 @@ import numpy as np
 from .busqueda import en_gap
 from .config import EVENTOS, ZONAS, bbox
 from .indicadores import indicadores_par
+from .limpieza import agua_permanente
 from .mapas import COLOR_IMPACTO, _a_latlon, _clases, _gris, _impacto, _secuencial
 
 ZONAS_CON_EVENTO = [z for z in ZONAS if any(z in e["zonas"] for e in EVENTOS)]
@@ -60,16 +61,16 @@ def _capas_fecha(m, carpeta: Path, base: str, prefijo_web: str):
 
 def _gif(cuadros, ruta: Path, titulo: str):
     """cuadros: lista de (fecha, madurez, sar_latlon, impacto_latlon, texto_evento). Fondo σ⁰ HH + efectos en color."""
-    import matplotlib
-    matplotlib.use("Agg")
-    import matplotlib.pyplot as plt
+    # Figura fuera de pyplot (Figure + FigureCanvasAgg) para no cambiar el backend del notebook.
+    from matplotlib.backends.backend_agg import FigureCanvasAgg
+    from matplotlib.figure import Figure
     from matplotlib.patches import Patch
     from PIL import Image
     nombres = {1: "agua permanente", 2: "inundación nueva", 3: "agua retirada", 4: "vegetación inundada nueva",
                5: "suelo más húmedo/rugoso", 6: "suelo más seco/liso", 7: "estructuras / ciudad"}
     imgs = []
     for fecha, mad, sar, imp, ev in cuadros:
-        fig = plt.figure(figsize=(6.4, 7.2), dpi=90, facecolor="#0b1118")
+        fig = Figure(figsize=(6.4, 7.2), dpi=90, facecolor="#0b1118"); FigureCanvasAgg(fig)
         ax = fig.add_axes([0.03, 0.2, 0.94, 0.66])
         ax.imshow(np.nan_to_num(np.clip((sar + 25) / 25, 0, 1)), cmap="gray", vmin=0, vmax=1)
         ax.imshow(_impacto(imp))
@@ -83,7 +84,6 @@ def _gif(cuadros, ruta: Path, titulo: str):
         fig.canvas.draw()
         rgb = Image.fromarray(np.asarray(fig.canvas.buffer_rgba())[..., :3].copy())
         imgs.append(rgb.quantize(colors=255, method=Image.Quantize.MEDIANCUT, dither=Image.Dither.NONE))
-        plt.close(fig)
     imgs[0].save(ruta, save_all=True, append_images=imgs[1:], duration=1100, loop=0)
 
 
@@ -126,7 +126,7 @@ def serie_temporal(cat, modo, cache: Path, salida: Path, zonas=None, verbose=Tru
         except Exception as e:
             print(f"   omitida ({type(e).__name__}: {e})", flush=True)
             continue
-        frames, cuadros = [], []
+        frames, cuadros, clss, fechas_cls, km2 = [], [], [], [], None
         for i, g in enumerate(gs):
             try:
                 L = Lb if i == 0 else _lectura(g, z, modo, cache, i)
@@ -147,13 +147,31 @@ def serie_temporal(cat, modo, cache: Path, salida: Path, zonas=None, verbose=Tru
                              "dsigma_tierra_med_db": r(met["dsigma_tierra_med_db"]), "deps_tierra_med": r(met["deps_tierra_med"]),
                              "suelo_humedecido_km2": r(met["suelo_humedecido_km2"]), "hvhh_db": r(met["hvhh_despues_db"])},
                 "calidad": _calidad(m)})
+            frames[-1]["metricas"]["s0hh_tierra_med_db"] = r(met["s0hh_tierra_despues_db"])
+            frames[-1]["metricas"]["theta_med_deg"] = r(met["theta_med_deg"])
+            frames[-1]["metricas"]["frac_valida"] = r(met["cobertura"])
             cuadros.append((g["t"], g["madurez"], sar, imp, ev_txt))
+            cls_d = m["res"]["d"]["cls"]
+            if not clss or cls_d.shape == clss[0].shape:
+                clss.append(cls_d); fechas_cls.append(g["t"])
+                km2 = abs((m["x"][1] - m["x"][0]) * (m["y"][1] - m["y"][0])) / 1e6
         if len(frames) < 2:
             continue
+        # Agua permanente con la serie (limpieza.agua_permanente): separa ríos, mar, langostineras y falsos positivos
+        # estables (arena seca lisa) de la inundación. Se recalcula el agua nueva respecto de esa máscara.
+        evs_z = [e["inicio"] for e in EVENTOS if z in e["zonas"]]
+        perm, n_pre = agua_permanente(clss, fechas_cls, min(evs_z)) if evs_z and len(clss) >= 3 else (None, 0)
+        for f_, c_ in zip([f for f in frames], clss if len(clss) == len(frames) else [None] * len(frames)):
+            if perm is not None and c_ is not None:
+                f_["metricas"]["agua_nueva_vs_permanente_km2"] = round(float(((c_ == 1) & ~perm).sum() * km2), 4)
+        if perm is not None:
+            print(f"   agua permanente: {perm.sum() * km2:.2f} km² (≥80 % de {n_pre} fechas previas al primer evento)", flush=True)
         gif = carpeta / f"{z}_{geom}.gif"
         _gif(cuadros, gif, f"{ZONAS[z]['nombre']} · órbita {geom}")
         out.append({"zona": z, "geom": geom, "base": frames[0]["fecha"], "frames": frames,
-                    "gif": f"../salidas/{sub}/{gif.name}"})
+                    "gif": f"../salidas/{sub}/{gif.name}",
+                    "agua_permanente_km2": round(float(perm.sum() * km2), 4) if perm is not None else None,
+                    "fechas_previas_usadas": n_pre})
         if verbose:
             print(f"   GIF: salidas/{sub}/{gif.name}", flush=True)
     return out

@@ -5,7 +5,9 @@
 - Vegetación inundada: rebote doble sensible a HH (R6, R7 [V]); umbrales −3.5 dB y 7 dB (R15 [?]).
 - σ⁰ = γ⁰ · rtcGammaToSigmaFactor (R2 [V]).
 - Δε' por detección de cambios con ks constante: deducción propia sobre R8 [A].
-- Filtro de mediana 3×3: código del equipo (R15) sin referencia bibliográfica [?].
+- Limpieza previa (limpieza.py): máscara `mask` 1–5 (R16 [V]) erosionada 2 px por el desalineamiento (R17 [V], [A]),
+  filtro de Lee con ENL = numberOfLooks (Lee 1980 [?]; uso de filtro Lee en el río Tumbes: R18 [V]),
+  θ por píxel desde el cubo incidenceAngle (R16 [V], interpolación [A]).
 - Vegetación: σ⁰_HV como dispersión de volumen (R6 [V]); ΔHV como cambio de vegetación/estructura [A].
 - Capa "impacto": combina agua, vegetación inundada y Δσ⁰ con UMBRALES_IMPACTO (config.py) [A][?].
 """
@@ -30,19 +32,46 @@ def otsu(v, lo=-30, hi=5, bins=256):
     return float(c[np.argmax(w0 * w1 * (m0 - m1) ** 2)])
 
 
-def clasificar(hh_db, hv_db, umb=UMBRALES):
-    """0 tierra, 1 agua abierta, 2 vegetación inundada, 255 sin dato."""
-    hh = median_filter(np.nan_to_num(hh_db, nan=-40), size=3)
+def clasificar(hh_db, hv_db, umb=UMBRALES, filtrar=False):
+    """0 tierra, 1 agua abierta, 2 vegetación inundada, 255 sin dato. hh_db ya viene limpio (máscara + Lee);
+    filtrar=True aplica además la mediana 3×3 del código original del equipo (R15)."""
+    hh = np.nan_to_num(hh_db, nan=-40)
+    if filtrar:
+        hh = median_filter(hh, size=3)
     thr = min(umb["agua_max"], max(umb["agua_min"], otsu(hh)))
     cls = np.zeros(hh.shape, np.uint8); cls[hh < thr] = 1
     if hv_db is not None:
-        hv = median_filter(np.nan_to_num(hv_db, nan=-40), size=3)
+        hv = np.nan_to_num(hv_db, nan=-40)
+        if filtrar:
+            hv = median_filter(hv, size=3)
         cls[(cls == 0) & (hh > umb["inund_hh"]) & ((hh - hv) > umb["inund_dif"])] = 2
     cls[~np.isfinite(hh_db)] = 255
     return cls, thr
 
 
-def theta_rad(lectura):
+def preparar_fecha(c):
+    """Limpieza de una fecha (limpieza.py) y conversión a dB. Guarda las etapas para poder graficarlas."""
+    from .limpieza import lee, mascara_valida
+    valido, info = mascara_valida(c)
+    looks = c.get("numberOfLooks")
+    fac = c["rtcGammaToSigmaFactor"] if c.get("rtcGammaToSigmaFactor") is not None else 1.0
+    hh = np.where(valido, c["HHHH"], np.nan)
+    hv = np.where(valido, c["HVHV"], np.nan) if c.get("HVHV") is not None else None
+    hh_f = lee(hh, looks)
+    hv_f = lee(hv, looks) if hv is not None else None
+    c["valido"], c["limpieza"] = valido, info
+    c["hh_db_bruto"] = to_db(c["HHHH"])
+    c["hh_db"], c["hv_db"] = to_db(hh_f), (to_db(hv_f) if hv_f is not None else None)
+    c["s0hh_db"] = to_db(hh_f * fac)
+    c["s0hv_db"] = to_db(hv_f * fac) if hv_f is not None else None
+    c["cls"], c["thr"] = clasificar(c["hh_db"], c["hv_db"])
+    return c
+
+
+def theta_rad(lectura, capas=None):
+    th = (capas or lectura["capas"]).get("theta_deg")
+    if th is not None and np.isfinite(th).any():
+        return np.radians(th), lectura.get("nota_theta") or "θ por píxel desde el cubo incidenceAngle (R16)"
     nota = f"θ = {THETA_RESPALDO_DEG:.0f}° (punto medio de 33–47°, R13): aproximación"
     if lectura["rutas_incidencia"]:
         # El producto trae el cubo incidenceAngle, pero falta interpolarlo a la grilla [?]. Mientras tanto se usa
@@ -75,16 +104,8 @@ def indicadores_par(A, B):
 
 def _indicadores_par(A, B):
     (ca, cb), area_px, xs, ys = recorte_comun(A, B)
-    th, nota_th = theta_rad(A)
-    res = {}
-    for k, c in (("a", ca), ("d", cb)):
-        fac = c["rtcGammaToSigmaFactor"] if c["rtcGammaToSigmaFactor"] is not None else 1.0
-        c["hh_db"] = to_db(c["HHHH"])
-        c["hv_db"] = to_db(c["HVHV"]) if c["HVHV"] is not None else None
-        c["s0hh_db"] = to_db(c["HHHH"] * fac)
-        c["s0hv_db"] = to_db(c["HVHV"] * fac) if c["HVHV"] is not None else None
-        c["cls"], c["thr"] = clasificar(c["hh_db"], c["hv_db"])
-        res[k] = c
+    th, nota_th = theta_rad(A, ca)
+    res = {"a": preparar_fecha(ca), "d": preparar_fecha(cb)}
     wa, wd = res["a"]["cls"] == 1, res["d"]["cls"] == 1
     valido = (res["a"]["cls"] != 255) & (res["d"]["cls"] != 255)
     tierra = valido & ~wa & ~wd & (res["a"]["cls"] != 2) & (res["d"]["cls"] != 2)
@@ -106,11 +127,14 @@ def _indicadores_par(A, B):
         hvhh_antes_db=hvhh(res["a"]), hvhh_despues_db=hvhh(res["d"]),
         looks_med=float(np.nanmedian(res["a"]["numberOfLooks"])) if res["a"]["numberOfLooks"] is not None else np.nan,
         cobertura=float(valido.mean()), theta=nota_th,
+        theta_med_deg=float(np.nanmedian(np.degrees(th))) if np.ndim(th) else float(np.degrees(th)),
+        mask_valida_antes=res["a"]["limpieza"].get("frac_mask_valida"), mask_valida_despues=res["d"]["limpieza"].get("frac_mask_valida"),
+        s0hh_tierra_antes_db=float(np.nanmedian(res["a"]["s0hh_db"][tierra])), s0hh_tierra_despues_db=float(np.nanmedian(res["d"]["s0hh_db"][tierra])),
         veg_inundada_nueva_km2=float((impacto == 4).sum() * km2), estructuras_km2=float((impacto == 7).sum() * km2),
         suelo_humedecido_km2=float((impacto == 5).sum() * km2), suelo_secado_km2=float((impacto == 6).sum() * km2),
         dhv_tierra_med_db=float(np.nanmedian(dhv[tierra])) if np.isfinite(dhv).any() else np.nan)
     return met, dict(res=res, dsig=dsig, deps=deps, dhv=dhv, tierra=tierra, impacto=impacto,
-                     x=xs, y=ys, epsg=A["epsg"])
+                     x=xs, y=ys, epsg=A["epsg"], theta=th)
 
 
 IMPACTO_CLASES = {0: "sin cambio", 1: "agua permanente", 2: "inundación nueva", 3: "agua retirada",
