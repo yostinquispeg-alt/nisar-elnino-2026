@@ -1,0 +1,8 @@
+cache/*
+!cache/.gitkeep
+salidas/*
+!salidas/.gitkeep
+__pycache__/
+.ipynb_checkpoints/
+*.h5
+.env

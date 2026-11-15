@@ -1,0 +1,11 @@
+numpy
+pandas
+matplotlib
+scipy
+h5py
+pyproj
+requests
+fsspec
+aiohttp
+jupyter
+ipykernel

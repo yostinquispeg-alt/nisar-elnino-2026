@@ -1,0 +1,639 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>El Niño 2026 · costa norte · NISAR</title>
+<!-- Mapa de resultados del pipeline nisar_cn (1_jupyter/NISAR_analisis.ipynb o 2_mapa/generar_mapa.py).
+     Lee ../salidas/nisar_manifest_real.js y las capas PNG de ../salidas/mapas_real/.
+     Si no existe el manifiesto REAL, usa el DEMO y lo avisa en grande. Estructura basada en index.html/app.js
+     de nsac-project (R15). -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<style>
+:root{--bg:#0b1118;--panel:#111a24;--line:#223142;--txt:#dce6f0;--mut:#8b9bab;--acc:#4cc3ff;--warn:#ffb020}
+*{box-sizing:border-box}
+[hidden]{display:none!important}
+html,body{margin:0;height:100%;}
+body{display:flex;flex-direction:column;background:var(--bg);color:var(--txt);font:14px/1.4 system-ui,Segoe UI,Roboto,sans-serif}
+header{display:flex;align-items:center;gap:14px;padding:10px 16px;border-bottom:1px solid var(--line)}
+header h1{font-size:17px;margin:0}
+header p{margin:0;color:var(--mut);font-size:12px}
+.badge{margin-left:auto;padding:4px 10px;border-radius:99px;font-weight:600;font-size:12px;background:#163a2a;color:#5be3a0}
+.badge.demo{background:#3a2a10;color:var(--warn)}
+.banner{background:#3a2a10;color:var(--warn);padding:8px 16px;font-size:13px;border-bottom:1px solid #5a4010}
+.layout{display:grid;grid-template-columns:240px 1fr 360px;flex:1;min-height:0}
+.list{border-right:1px solid var(--line);overflow:auto;padding:8px}
+.list h3{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut);margin:12px 6px 4px}
+.list button{display:block;width:100%;text-align:left;background:none;border:1px solid transparent;color:var(--txt);padding:6px 8px;border-radius:6px;cursor:pointer;font-size:13px}
+.list button small{display:block;color:var(--mut);font-size:11px}
+.list button:hover{background:#16212d}
+.list button.on{border-color:var(--acc);background:#10273a}
+.list .nodata{color:var(--mut);font-size:12px;padding:4px 8px}
+.mapwrap{position:relative}
+#map{position:absolute;inset:0}
+.tools{position:absolute;top:10px;left:50px;right:10px;z-index:500;display:flex;flex-wrap:wrap;gap:8px;align-items:flex-start;pointer-events:none}
+.tools>*{pointer-events:auto}
+.seg{display:flex;background:rgba(11,17,24,.9);border:1px solid var(--line);border-radius:8px;overflow:hidden}
+.seg button{background:none;border:0;color:var(--mut);padding:6px 9px;cursor:pointer;font-size:12px}
+.seg button.on{background:var(--acc);color:#04111c;font-weight:600}
+.capas{display:flex;flex-direction:column;gap:4px;background:rgba(11,17,24,.92);border:1px solid var(--line);border-radius:8px;padding:6px 8px}
+.grupo{display:flex;align-items:center;gap:4px;flex-wrap:wrap;font-size:12px}
+.grupo b{min-width:118px;color:var(--txt);font-weight:600}
+.grupo button{background:#16212d;border:1px solid var(--line);color:var(--mut);padding:3px 8px;border-radius:5px;cursor:pointer;font-size:12px}
+.grupo button.on{background:var(--acc);color:#04111c;border-color:var(--acc);font-weight:600}
+.stats h4{grid-column:1/-1;margin:6px 0 0;font-size:12px;display:flex;align-items:center;gap:6px}
+.stats h4 i{width:10px;height:10px;border-radius:50%;display:inline-block}
+.opac{background:rgba(11,17,24,.9);border:1px solid var(--line);border-radius:8px;padding:4px 8px;font-size:12px;color:var(--mut)}
+.legend{position:absolute;bottom:14px;left:10px;z-index:500;background:rgba(11,17,24,.92);border:1px solid var(--line);border-radius:8px;padding:8px 10px;font-size:12px;max-width:300px}
+.legend small{display:block;color:var(--mut);margin-top:4px}
+.legend i{display:inline-block;width:12px;height:12px;border-radius:2px;margin-right:6px;vertical-align:-2px}
+.legend .bar{height:10px;border-radius:2px;margin:4px 0 2px}
+.legend .ticks{display:flex;justify-content:space-between;color:var(--mut);font-size:11px}
+.leaflet-image-layer{image-rendering:pixelated}
+aside{border-left:1px solid var(--line);overflow:auto;padding:12px 14px;background:var(--panel)}
+.label{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--mut)}
+.title{font-size:16px;font-weight:600;margin:2px 0 4px}
+.meta{color:var(--mut);font-size:12px;word-break:break-all}
+.stats{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:12px 0}
+.stat{background:#0d151e;border:1px solid var(--line);border-radius:8px;padding:8px}
+.stat b{display:block;font-size:18px;font-variant-numeric:tabular-nums}
+.stat small{color:var(--mut);font-size:11px}
+.card{background:#0d151e;border:1px solid var(--line);border-radius:8px;padding:8px;margin:10px 0}
+.chartbox{position:relative;height:180px}
+a{color:var(--acc)}
+.src{font-size:11px;color:var(--mut);border-top:1px solid var(--line);margin-top:12px;padding-top:8px}
+.tabs{display:flex;gap:4px;margin-left:24px}
+.tabs button{background:#16212d;border:1px solid var(--line);color:var(--mut);padding:6px 12px;border-radius:7px;cursor:pointer;font-size:13px}
+.tabs button.on{background:var(--acc);color:#04111c;font-weight:600;border-color:var(--acc)}
+#timebar{flex:0 0 112px;overflow:hidden;border-top:1px solid var(--line);padding:8px 14px;display:flex;flex-direction:column;gap:6px}
+#timebar .fila{display:flex;align-items:center;gap:10px}
+#timebar button{background:#16212d;border:1px solid var(--line);color:var(--txt);border-radius:6px;padding:4px 10px;cursor:pointer;font-size:14px}
+#timebar .col{flex:1;display:flex;flex-direction:column;padding:0 30px}
+#tSlider{width:100%;accent-color:var(--acc);margin:0}
+#tFecha{min-width:250px;font-weight:600;font-variant-numeric:tabular-nums}
+#ticks{position:relative;height:44px;margin:0 7px}
+#ticks .tk{position:absolute;top:0;z-index:2;transform:translateX(-50%);font-size:10px;color:var(--mut);text-align:center;cursor:pointer;white-space:nowrap}
+#ticks .tk i{display:block;width:10px;height:10px;border-radius:50%;margin:0 auto 2px}
+#ticks .tk.on{color:var(--txt);font-weight:600}
+#ticks .ev{position:absolute;top:-4px;bottom:0;width:0;border-left:2px dashed #ff6b6b;z-index:1;pointer-events:none}
+#ticks .ev span{position:absolute;bottom:-2px;left:3px;font-size:10px;color:#ff6b6b}
+.gif{display:inline-block;margin-top:6px}
+.cronica{position:absolute;right:10px;bottom:14px;z-index:500;width:390px;max-height:52%;overflow:auto;background:rgba(11,17,24,.94);border:1px solid var(--line);border-radius:10px;padding:10px 12px;font-size:12px;box-shadow:0 6px 24px rgba(0,0,0,.45)}
+.cronica h5{margin:0 0 4px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--mut)}
+.cronica .ver{font-weight:700;font-size:13px;margin:4px 0 6px;padding:6px 8px;border-radius:6px}
+.ver.si{background:#123524;color:#5be3a0}.ver.no{background:#3a1a1a;color:#ff8f8f}.ver.duda{background:#3a2a10;color:var(--warn)}.ver.neutro{background:#16212d;color:var(--mut)}
+.cronica .nisar{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin:6px 0}
+.cronica .nisar div{background:#0d151e;border:1px solid var(--line);border-radius:6px;padding:4px 6px}
+.cronica .nisar b{display:block;font-size:14px}
+.cronica .nt{border-left:3px solid #ffd84c;padding:3px 0 3px 8px;margin:6px 0}
+.cronica .nt.oficial{border-color:#5be3a0}.cronica .nt.medicion{border-color:#4cc3ff}
+.cronica .nt small{color:var(--mut)}
+.cronica .qa{background:#3a1a1a;color:#ff8f8f;border-radius:6px;padding:5px 8px;margin:4px 0}
+.nube{background:#fffbe8;color:#222;border-radius:12px;border:none;box-shadow:0 4px 16px rgba(0,0,0,.4);max-width:300px;white-space:normal;font-size:12px;padding:8px 10px}
+.nube b{color:#a40000}
+footer{flex:0 0 112px;border-top:1px solid var(--line);padding:8px 14px;display:flex;gap:8px;overflow-x:auto;align-items:stretch}
+.ev{min-width:220px;max-width:260px;background:#0d151e;border:1px solid var(--line);border-radius:8px;padding:8px;cursor:pointer;color:var(--txt);text-align:left;font-size:12px}
+.ev b{color:#ff6b6b}
+.ev.on{border-color:#ff6b6b;background:#2a1418}
+.ev small{display:block;color:var(--mut)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>El Niño 2026 en la costa norte del Perú · NISAR banda L</h1>
+    <p>Tumbes y Piura: cómo cambian el agua, el suelo y la vegetación en cada fecha NISAR L2 GCOV, junto a las noticias de cada evento</p>
+  </div>
+  <div class="tabs" id="tabs"><button data-m="serie" class="on">Serie temporal (todas las fechas)</button><button data-m="eventos">Antes / después por evento</button></div>
+  <span id="badge" class="badge">cargando…</span>
+</header>
+<div id="banner" class="banner" hidden></div>
+
+<main class="layout">
+  <nav class="list" id="lista"></nav>
+  <section class="mapwrap">
+    <div id="map"></div>
+    <div class="tools">
+      <div class="capas" id="segSerie" hidden>
+        <div class="grupo"><span style="color:#ff6b6b">●</span><b>Cambio vs 1.ª fecha</b><button data-s="impacto" class="on">Impacto (todos los efectos)</button></div>
+        <div class="grupo"><span style="color:#1e78ff">●</span><b>Agua en esa fecha</b><button data-s="clases">Agua y rebote doble</button></div>
+        <div class="grupo"><span style="color:#28c85a">●</span><b>Vegetación</b><button data-s="hv">σ⁰ HV</button></div>
+        <div class="grupo"><span style="color:#ccc">●</span><b>Radar</b><button data-s="sar">σ⁰ HH</button></div>
+        <div class="grupo"><span style="color:#4fb3bf">●</span><b>Otros productos NISAR</b><button data-s="sme2">Humedad del suelo SME2</button><button data-s="gunw">Coherencia GUNW</button></div>
+      </div>
+      <div class="capas" id="segCapa">
+        <div class="grupo"><span style="color:#ff6b6b">●</span><b>Todo</b>
+          <button data-c="impacto" class="on">Impacto (todos los efectos)</button></div>
+        <div class="grupo"><span style="color:#1e78ff">●</span><b>Agua</b>
+          <button data-c="clases_antes">Antes</button><button data-c="clases_despues">Después</button><button data-c="cambio">Cambio</button></div>
+        <div class="grupo"><span style="color:#5ab4ac">●</span><b>Humedad del suelo</b>
+          <button data-c="deps">Δε′</button><button data-c="dsigma">Δσ⁰ HH</button></div>
+        <div class="grupo"><span style="color:#28c85a">●</span><b>Vegetación</b>
+          <button data-c="hv_antes">HV antes</button><button data-c="hv_despues">HV después</button><button data-c="dhv">ΔHV</button></div>
+        <div class="grupo"><span style="color:#ccc">●</span><b>Radar</b>
+          <button data-c="sar_antes">HH antes</button><button data-c="sar_despues">HH después</button><button data-c="rgb_antes">RGB antes</button><button data-c="rgb_despues">RGB después</button></div>
+      </div>
+      <div class="seg" id="segBlink"><button id="btnParpadeo">▶ Antes/después</button></div>
+      <label class="opac">Opacidad <input id="opac" type="range" min="0" max="100" value="85"></label>
+      <div class="seg" id="segBase"><button data-b="sat" class="on">Satélite</button><button data-b="osm">Calles</button></div>
+    </div>
+    <div class="legend" id="legend"></div>
+    <div class="cronica" id="cronica"></div>
+  </section>
+  <aside>
+    <span class="label" id="tLabel">Selección</span>
+    <div class="title" id="tTitulo">—</div>
+    <div id="tNoticia"></div>
+    <div class="meta" id="tFechas"></div>
+    <div class="stats" id="stats"></div>
+    <div id="tGif"></div>
+    <div class="card"><span class="label" id="tChartLabel">Efectos por zona en este evento (km²)</span><div class="chartbox"><canvas id="chart"></canvas></div></div>
+    <div class="card"><span class="label">Escenas NISAR usadas</span><div class="meta" id="tGranulos"></div></div>
+    <div class="src">
+      <b>Cómo leer las capas.</b> σ⁰ HH = γ⁰ (HHHH) × rtcGammaToSigmaFactor del GCOV (NISAR GCOV Product Spec).
+      Agua: σ⁰ HH bajo umbral de Otsu acotado a −22/−14 dB; vegetación inundada: rebote doble, HH > −3,5 dB y HH − HV > 7 dB
+      (Earthdata «What is SAR?»). Umbrales en dB: marcados [?] en docs/REFERENCIAS.md, falta su referencia.
+      Vegetación: σ⁰ HV (dispersión de volumen, Earthdata «What is SAR?»).
+      Δε′ = Δσ⁰ / (0,28·tanθ), deducido de Dubois et al. (1995) suponiendo que la rugosidad no cambia entre fechas [A].
+      Con solo HH/HV, sin VV, rugosidad y humedad no se separan en una sola fecha. θ = 40° de respaldo, falta interpolar
+      el cubo incidenceAngle [?]. Las capas se remuestrean de la grilla proyectada del GCOV a lat/lon por vecino más cercano.
+    </div>
+  </aside>
+</main>
+<div id="timebar" hidden>
+  <div class="fila"><button id="tPlay">▶</button><button id="tPrev">‹</button><button id="tNext">›</button>
+    <span id="tFecha">—</span>
+    <div class="col"><input id="tSlider" type="range" min="0" max="0" value="0"><div id="ticks"></div></div></div>
+</div>
+<footer id="eventos"></footer>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<script>window.NISAR_MANIFEST = null;</script>
+<script src="../salidas/nisar_manifest_real.js" onerror="void 0"></script>
+<script>
+// Si no hay resultados REAL, carga los DEMO.
+if (!window.NISAR_MANIFEST) document.write('<script src="../salidas/nisar_manifest_demo.js"><\/script>');
+</script>
+<script>
+'use strict';
+const M = window.NISAR_MANIFEST;
+const $ = (id) => document.getElementById(id);
+const fmt = (v, d = 2) => (v === null || v === undefined || Number.isNaN(v)) ? '—' : Number(v).toFixed(d);
+const fecha = (s) => new Date(s).toLocaleString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' });
+
+const GRIS = '<div class="bar" style="background:linear-gradient(90deg,#000,#fff)"></div><div class="ticks"><span>−25 dB</span><span>0 dB</span></div>';
+const DIV = (a, b, c, t) => `<div class="bar" style="background:linear-gradient(90deg,${a},${b},${c})"></div><div class="ticks">${t.map((x) => `<span>${x}</span>`).join('')}</div>`;
+const sw = (c, t) => `<div><i style="background:${c}"></i>${t}</div>`;
+const LEYENDA = {
+  impacto: '<b>Todos los efectos entre las dos fechas</b>' + sw('rgb(20,60,200)', 'Agua permanente') + sw('rgb(0,210,255)', 'Inundación nueva') +
+    sw('rgb(255,140,0)', 'Agua retirada') + sw('rgb(40,200,90)', 'Vegetación inundada nueva (rebote doble que no estaba antes)') +
+    sw('rgb(170,90,255)', 'Suelo más húmedo o rugoso (Δσ⁰ ≥ +2 dB)') + sw('rgb(165,105,45)', 'Suelo más seco o liso (Δσ⁰ ≤ −2 dB)') +
+    sw('rgb(150,150,150)', 'Estructuras / ciudad (rebote doble en ambas fechas, descartado como inundación)') +
+    '<small>Los cortes en ±2 dB los elegimos nosotros [A], todavía sin referencia [?].</small>',
+  clases_antes: '<b>Agua, fecha antes</b>' + sw('rgb(30,120,255)', 'Agua abierta (oscura en radar)') + sw('rgb(40,200,90)', 'Rebote doble: vegetación inundada o edificios') + '<small>Para separar la ciudad de la inundación mira la capa Impacto.</small>',
+  clases_despues: '<b>Agua, fecha después</b>' + sw('rgb(30,120,255)', 'Agua abierta (oscura en radar)') + sw('rgb(40,200,90)', 'Rebote doble: vegetación inundada o edificios') + '<small>Para separar la ciudad de la inundación mira la capa Impacto.</small>',
+  cambio: '<b>Cambio de agua</b>' + sw('rgb(0,200,255)', 'Agua ganada (inundación nueva)') + sw('rgb(255,140,0)', 'Agua perdida'),
+  deps: '<b>Humedad del suelo: Δε′ (después − antes)</b>' + DIV('#8c510a', '#f5f5f5', '#01665e', ['−15 más seco', '0', '+15 más húmedo']) +
+    'Constante dieléctrica deducida de Dubois suponiendo rugosidad constante [A]. ε′ sube con el agua del suelo (Topp).',
+  dsigma: '<b>Δσ⁰ HH sobre tierra</b>' + DIV('#2166ac', '#f7f7f7', '#b2182b', ['−5 dB', '0', '+5 dB']) + 'Rojo: más retrodispersión, por suelo más húmedo o más rugoso. Con HH y HV solos no se distinguen las dos causas.',
+  hv_antes: '<b>Vegetación: σ⁰ HV antes</b>' + DIV('#ffffe5', '#78c679', '#004529', ['−30 dB', '', '−10 dB']) + 'HV viene de la dispersión de volumen: más verde, más vegetación o estructura.',
+  hv_despues: '<b>Vegetación: σ⁰ HV después</b>' + DIV('#ffffe5', '#78c679', '#004529', ['−30 dB', '', '−10 dB']) + 'HV viene de la dispersión de volumen: más verde, más vegetación o estructura.',
+  dhv: '<b>Cambio de vegetación: ΔHV</b>' + DIV('#c51b7d', '#f7f7f7', '#4d9221', ['−4 dB pérdida', '0', '+4 dB']) + 'Interpretarlo como cambio de vegetación es nuestra lectura [A]; la humedad también cambia HV.',
+  sar_antes: '<b>σ⁰ HH antes</b>' + GRIS + 'Oscuro: agua en calma (reflexión especular). Claro: rugoso, húmedo o rebote doble.',
+  sar_despues: '<b>σ⁰ HH después</b>' + GRIS + 'Oscuro: agua en calma (reflexión especular). Claro: rugoso, húmedo o rebote doble.',
+  rgb_antes: '<b>Compuesto RGB antes</b>' + sw('#f00', 'R = σ⁰ HH') + sw('#0f0', 'G = σ⁰ HV (vegetación)') + sw('#00f', 'B = HH − HV') + '<small>La combinación de colores es una elección de visualización [A].</small>',
+  rgb_despues: '<b>Compuesto RGB después</b>' + sw('#f00', 'R = σ⁰ HH') + sw('#0f0', 'G = σ⁰ HV (vegetación)') + sw('#00f', 'B = HH − HV') + '<small>La combinación de colores es una elección de visualización [A].</small>',
+};
+const PAREJA = { sar: ['sar_antes', 'sar_despues'], rgb: ['rgb_antes', 'rgb_despues'], hv: ['hv_antes', 'hv_despues'], clases: ['clases_antes', 'clases_despues'] };
+
+const st = { modo: 'eventos', i: -1, capa: 'impacto', opac: 0.85, blink: null, ev: null };
+let map, overlay, cuadro, chart;
+const marcadores = {};
+
+function init() {
+  if (!M) {
+    $('badge').textContent = 'sin datos';
+    $('banner').hidden = false;
+    $('banner').innerHTML = 'No encontré <code>../salidas/nisar_manifest_real.js</code> ni el DEMO. Corre <code>1_jupyter/NISAR_analisis.ipynb</code> o <code>python 2_mapa/generar_mapa.py</code> y recarga esta página.';
+    return;
+  }
+  const real = M.modo === 'REAL';
+  $('badge').textContent = real ? 'DATOS REALES NISAR · ' + fecha(M.generated) : 'MODO DEMO';
+  $('badge').classList.toggle('demo', !real);
+  if (!real) {
+    $('banner').hidden = false;
+    $('banner').innerHTML = '<b>Modo DEMO:</b> estas capas salen de archivos SINTÉTICOS (prueba del código), no son resultados. Corre el notebook de <code>1_jupyter</code> o <code>python 2_mapa/generar_mapa.py</code> y recarga.';
+  }
+
+  const sat = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { attribution: 'Imágenes © Esri', maxZoom: 18 });
+  const osm = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { attribution: '© OpenStreetMap', maxZoom: 19 });
+  map = L.map('map', { zoomSnap: 0.25, layers: [sat] }).setView([-4.4, -80.3], 8);
+  document.querySelectorAll('#segBase button').forEach((b) => b.onclick = () => {
+    document.querySelectorAll('#segBase button').forEach((x) => x.classList.toggle('on', x === b));
+    map.removeLayer(b.dataset.b === 'sat' ? osm : sat); (b.dataset.b === 'sat' ? sat : osm).addTo(map);
+  });
+
+  // Todas las zonas documentadas, tengan o no par analizado.
+  Object.entries(M.zonas).forEach(([z, v]) => {
+    const n = M.capas.filter((c) => c.zona === z).length;
+    const c = v.caja;
+    L.rectangle([[c.s, c.w], [c.n, c.e]], { color: n ? '#4cc3ff' : '#8b9bab', weight: 1, dashArray: '4 4', fill: false, interactive: false }).addTo(map);
+    const links = v.noticias.map((k) => `<a href="${M.noticias[k]}" target="_blank" rel="noopener">${k}</a>`).join(' · ');
+    marcadores[z] = L.circleMarker(v.punto, { radius: 7, color: '#fff', weight: 2, fillColor: n ? '#ff6b6b' : '#8b9bab', fillOpacity: 1 })
+      .bindTooltip(v.nombre).bindPopup(`<b>${v.nombre}</b><br>${v.region}<br>Pares NISAR analizados: ${n}<br>Noticias: ${links}`)
+      .on('click', () => { if (st.modo === 'serie') { const k = (M.serie || []).findIndex((c) => c.zona === z); if (k >= 0) elegirSerie(k); } else { const k = M.capas.findIndex((c) => c.zona === z); if (k >= 0) seleccionar(k); } })
+      .addTo(map);
+  });
+
+  crearPines();
+  construirEventos();
+  document.querySelectorAll('#segCapa button').forEach((b) => b.onclick = () => { pararBlink(); ponerCapa(b.dataset.c); });
+  $('opac').oninput = (e) => { st.opac = e.target.value / 100; overlay && overlay.setOpacity(st.opac); };
+  $('btnParpadeo').onclick = () => st.blink ? pararBlink() : iniciarBlink();
+  $('legend').innerHTML = LEYENDA[st.capa];
+  document.querySelectorAll('#segSerie button').forEach((b) => b.onclick = () => { serieCapa(b.dataset.s); });
+  document.querySelectorAll('#tabs button').forEach((b) => b.onclick = () => modo(b.dataset.m));
+  $('tSlider').oninput = (e) => fechaSerie(+e.target.value);
+  $('tPrev').onclick = () => fechaSerie(Math.max(0, ss.f - 1));
+  $('tNext').onclick = () => fechaSerie(Math.min(serieActual().frames.length - 1, ss.f + 1));
+  $('tPlay').onclick = () => ss.play ? pararSerie() : playSerie();
+  modo((M.serie || []).length ? 'serie' : 'eventos');
+}
+
+let pines = [];
+function crearPines() {
+  (M.cronica || []).forEach((c, i) => c.zonas.forEach((z, j) => {
+    const p = M.zonas[z].punto, ang = (i * 47 + j * 113) % 360 * Math.PI / 180, r = 0.012 + (i % 3) * 0.006;
+    const mk = L.circleMarker([p[0] + r * Math.sin(ang), p[1] + r * Math.cos(ang)], {
+      radius: 6, color: '#222', weight: 1, fillColor: c.tipo === 'oficial' ? '#5be3a0' : c.tipo === 'medicion' ? '#4cc3ff' : '#ffd84c', fillOpacity: 0.95,
+    }).bindTooltip(`<b>${fechaCorta(c.fecha)}${c.fecha_aprox ? ' (aprox.)' : ''} · ${c.medio}</b><br>${c.texto}<br><small>${M.zonas[z].nombre} · clic para abrir la noticia</small>`,
+      { className: 'nube', direction: 'top', offset: [0, -6], sticky: false })
+      .on('click', () => window.open(c.url, '_blank', 'noopener'))
+      .addTo(map);
+    pines.push({ mk, t: Date.parse(c.fecha) });
+  }));
+}
+function actualizarPines(t) {
+  pines.forEach(({ mk, t: tn }) => mk.setStyle(t == null || tn <= t ? { fillOpacity: 0.95, opacity: 1 } : { fillOpacity: 0.15, opacity: 0.3 }));
+}
+
+function modo(m) {
+  st.modo = m;
+  document.querySelectorAll('#tabs button').forEach((b) => b.classList.toggle('on', b.dataset.m === m));
+  const serie = m === 'serie';
+  $('segSerie').hidden = !serie; $('segCapa').hidden = serie; $('segBlink').hidden = serie;
+  $('timebar').hidden = !serie; $('eventos').hidden = serie;
+  pararBlink(); pararSerie();
+  if (serie) {
+    if (!(M.serie || []).length) { $('tTitulo').textContent = 'Sin serie temporal'; $('tFechas').textContent = 'Corre generar_mapa.py (sin --sin-serie) o el notebook.'; return; }
+    listaSerie(); elegirSerie(ss.i >= 0 ? ss.i : 0);
+  } else {
+    $('tGif').innerHTML = ''; $('tLabel').textContent = 'Par seleccionado';
+    $('tChartLabel').textContent = 'Efectos por zona en este evento (km²)';
+    if (chart) { chart.destroy(); chart = null; }
+    construirLista(); $('legend').innerHTML = LEYENDA[st.capa];
+    if (M.capas.length) seleccionar(Math.max(0, st.i));
+    else { $('tTitulo').textContent = 'No hay pares analizados'; $('tFechas').textContent = 'Revisa la salida del notebook o de generar_mapa.py.'; }
+  }
+}
+
+// ---------- Serie temporal ----------
+const ss = { i: -1, f: 0, capa: 'impacto', play: null };
+const LEY_SERIE = {
+  impacto: () => LEYENDA.impacto.replace('Todos los efectos entre las dos fechas', 'Cambio respecto de la 1.ª fecha de la serie'),
+  clases: () => '<b>Agua en esta fecha</b>' + sw('rgb(30,120,255)', 'Agua abierta (oscura en radar)') + sw('rgb(40,200,90)', 'Rebote doble: vegetación inundada o edificios'),
+  hv: () => LEYENDA.hv_antes.replace('σ⁰ HV antes', 'σ⁰ HV en esta fecha'),
+  sar: () => LEYENDA.sar_antes.replace('σ⁰ HH antes', 'σ⁰ HH en esta fecha'),
+};
+LEY_SERIE.sme2 = () => '<b>Humedad del suelo NISAR L3 SME2 (NASA)</b>' + DIV('#ffffd9', '#41b6c4', '#081d58', ['0', '0,25', '0,5 m³/m³']) + '<small>Escena SME2 más cercana a la fecha elegida (puede no coincidir con la pasada GCOV).</small>';
+LEY_SERIE.gunw = () => '<b>Coherencia interferométrica NISAR L2 GUNW (12 días)</b>' + DIV('#000004', '#b73779', '#fcfdbf', ['0 cambió', '0,5', '1 estable']) + '<small>Oscuro = la superficie cambió entre las dos pasadas (agua, suelo removido, cosecha). Par más cercano a la fecha elegida.</small>';
+const serieActual = () => M.serie[ss.i];
+const DIA = 864e5;
+
+function productoCercano(zona, prod, t) {
+  const arr = (((M.extra || {})[zona]) || {})[prod] || [];
+  let best = null;
+  arr.forEach((f) => { if (!best || Math.abs(Date.parse(f.fecha) - t) < Math.abs(Date.parse(best.fecha) - t)) best = f; });
+  return best;
+}
+
+function lluviaEntre(zona, tA, tB) {
+  const l = (M.lluvia || {})[zona];
+  if (!l) return null;
+  let tot = 0, max = 0, dmax = null, n = 0;
+  l.fechas.forEach((f, k) => { const t = Date.parse(f + 'T12:00:00-05:00'); if (t > tA && t <= tB && l.mm[k] != null) { tot += l.mm[k]; n++; if (l.mm[k] > max) { max = l.mm[k]; dmax = f; } } });
+  return n ? { tot, max, dmax, n } : null;
+}
+
+// Regla automática de correspondencia [A]: umbrales nuestros, sin referencia.
+const REGLA = { lluvia_mm: 30, agua_km2: 0.5, veg_km2: 0.5, suelo_km2: 1.0 };
+function cronicaHTML(zona, tA, tB, nisar, qa) {
+  const nombre = M.zonas[zona].nombre;
+  const notas = (M.cronica || []).filter((c) => c.zonas.includes(zona) && Date.parse(c.fecha) > tA && Date.parse(c.fecha) <= tB);
+  const evs = M.eventos.filter((e) => e.zonas.includes(zona) && Date.parse(e.inicio) > tA && Date.parse(e.inicio) <= tB);
+  const ll = lluviaEntre(zona, tA, tB);
+  const evidencia = notas.length > 0 || evs.length > 0 || (ll && ll.tot >= REGLA.lluvia_mm);
+  const senal = (nisar.dagua ?? 0) > REGLA.agua_km2 || (nisar.veg ?? 0) > REGLA.veg_km2 || (nisar.suelo ?? 0) > REGLA.suelo_km2;
+  let ver;
+  if (qa) ver = ['duda', '⚠ Dato NISAR dudoso en esta fecha: no se puede comparar'];
+  else if (evidencia && senal) ver = ['si', '✔ Coinciden: hubo lluvia o noticias y NISAR muestra agua o suelo húmedo nuevo'];
+  else if (evidencia && !senal) ver = ['no', '✖ Hubo lluvia o noticias, pero NISAR no ve cambio en esta pasada'];
+  else if (!evidencia && senal) ver = ['duda', '? NISAR muestra cambio sin lluvia fuerte ni noticias en el periodo'];
+  else ver = ['neutro', 'Sin lluvia fuerte, noticias ni cambio NISAR en el periodo'];
+  let h = `<h5>${nombre} · del ${fechaCorta(new Date(tA).toISOString())} al ${fechaCorta(new Date(tB).toISOString())}</h5>`;
+  h += `<div class="ver ${ver[0]}">${ver[1]}</div>`;
+  if (qa) h += `<div class="qa">${qa}</div>`;
+  h += '<div class="nisar">' +
+    `<div><small>NISAR: cambio de agua</small><b>${nisar.dagua == null ? '—' : (nisar.dagua >= 0 ? '+' : '') + fmt(nisar.dagua)} km²</b></div>` +
+    `<div><small>Suelo más húmedo</small><b>${fmt(nisar.suelo)} km²</b></div>` +
+    `<div><small>Lluvia (reanálisis)</small><b>${ll ? fmt(ll.tot, 0) + ' mm' : '—'}</b>${ll && ll.max > 0 ? `<small>máx ${fmt(ll.max, 0)} mm el ${fechaCorta(ll.dmax + 'T12:00:00-05:00')}</small>` : ''}</div></div>`;
+  if (!evs.length && !notas.length) h += '<div class="meta">Sin noticias registradas en este periodo para esta zona.</div>';
+  evs.forEach((e) => { h += `<div class="nt"><b>${e.id}</b> · ${fecha(e.inicio)}<br>${e.titular} <a href="${M.noticias[e.fuente]}" target="_blank" rel="noopener">fuente ${e.fuente}</a></div>`; });
+  notas.filter((c) => !evs.some((e) => e.fuente === c.id)).forEach((c) => {
+    h += `<div class="nt ${c.tipo}"><small>${fechaCorta(c.fecha)}${c.fecha_aprox ? ' (aprox.)' : ''} · ${c.medio} · ${c.tipo}</small><br>${c.texto} <a href="${c.url}" target="_blank" rel="noopener">${c.id}</a></div>`;
+  });
+  h += `<div class="meta" style="margin-top:6px">Regla automática [A]: lluvia ≥ ${REGLA.lluvia_mm} mm o una noticia, frente a +${REGLA.agua_km2} km² de agua, +${REGLA.veg_km2} km² de vegetación inundada o +${REGLA.suelo_km2} km² de suelo húmedo. Cada noticia se abrió completa el 14 nov 2026 [V]; «(aprox.)» = la nota solo da la fecha de publicación.</div>`;
+  return h;
+}
+const fechaCorta = (s) => new Date(s).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' });
+
+function listaSerie() {
+  const porRegion = {};
+  M.serie.forEach((s, i) => { const r = M.zonas[s.zona].region; (porRegion[r] = porRegion[r] || []).push([s, i]); });
+  let h = '';
+  Object.entries(porRegion).forEach(([reg, arr]) => {
+    h += `<h3>${reg}</h3>`;
+    arr.forEach(([s, i]) => {
+      const f = s.frames;
+      h += `<button data-i="${i}"><b>${M.zonas[s.zona].nombre}</b><small>órbita ${s.geom} · ${f.length} fechas · ${fechaCorta(f[0].fecha)} → ${fechaCorta(f[f.length - 1].fecha)}</small></button>`;
+    });
+  });
+  const sin = Object.keys(M.zonas).filter((z) => !M.serie.some((s) => s.zona === z));
+  if (sin.length) h += '<h3>Sin serie NISAR</h3>' + sin.map((z) => `<div class="nodata">${M.zonas[z].nombre}</div>`).join('');
+  $('lista').innerHTML = h;
+  $('lista').querySelectorAll('button').forEach((b) => b.onclick = () => elegirSerie(+b.dataset.i));
+}
+
+function elegirSerie(i) {
+  pararSerie();
+  ss.i = i; const s = serieActual(), z = M.zonas[s.zona];
+  $('lista').querySelectorAll('button').forEach((x) => x.classList.toggle('on', +x.dataset.i === i));
+  const b = s.frames[0].bounds;
+  map.fitBounds([[b.s, b.w], [b.n, b.e]], { padding: [20, 20] });
+  $('tSlider').max = s.frames.length - 1;
+  $('tLabel').textContent = 'Serie temporal';
+  $('tTitulo').textContent = `${z.nombre} (${z.region}) · órbita ${s.geom}`;
+  $('tGif').innerHTML = `<a class="gif" href="${s.gif}" target="_blank" rel="noopener">▶ Ver / descargar el GIF animado de esta serie</a>`;
+  $('tChartLabel').textContent = 'Evolución en el tiempo (km²); líneas rojas = eventos con noticia';
+  dibujarTicks(); graficoSerie(); serieCapa(ss.capa); fechaSerie(Math.min(ss.f, s.frames.length - 1));
+}
+
+function dibujarTicks() {
+  const s = serieActual(), t0 = Date.parse(s.frames[0].fecha), t1 = Date.parse(s.frames[s.frames.length - 1].fecha);
+  const x = (t) => ((t - t0) / Math.max(1, t1 - t0)) * 100;
+  let h = s.frames.map((f, k) => `<div class="tk" data-k="${k}" style="left:${x(Date.parse(f.fecha))}%"><i style="background:${f.madurez === 'VALIDATED' ? '#5be3a0' : '#4cc3ff'}"></i>${fechaCorta(f.fecha)}</div>`).join('');
+  M.eventos.filter((e) => e.zonas.includes(s.zona)).forEach((e) => {
+    const t = Date.parse(e.inicio);
+    if (t >= t0 && t <= t1) h += `<div class="ev" style="left:${x(t)}%" title="${e.titular}"><span>${e.id}</span></div>`;
+  });
+  $('ticks').innerHTML = h;
+  $('ticks').querySelectorAll('.tk').forEach((d) => d.onclick = () => fechaSerie(+d.dataset.k));
+}
+
+function serieCapa(c) {
+  ss.capa = c;
+  document.querySelectorAll('#segSerie button').forEach((b) => b.classList.toggle('on', b.dataset.s === c));
+  $('legend').innerHTML = LEY_SERIE[c]() + '<small>Puntos de la barra: azul = PROVISIONAL, verde = VALIDATED.</small>';
+  if (ss.i >= 0) fechaSerie(ss.f);
+}
+
+function fechaSerie(k) {
+  const s = serieActual(); if (!s) return;
+  ss.f = k; const f = s.frames[k], m = f.metricas, z = s.zona;
+  $('tSlider').value = k;
+  $('ticks').querySelectorAll('.tk').forEach((d) => d.classList.toggle('on', +d.dataset.k === k));
+  $('tFecha').textContent = `${fecha(f.fecha)} · ${f.madurez}`;
+  let b = [[f.bounds.s, f.bounds.w], [f.bounds.n, f.bounds.e]];
+  if (overlay) { map.removeLayer(overlay); overlay = null; }
+  let nota = '';
+  if (ss.capa === 'sme2' || ss.capa === 'gunw') {
+    const p = productoCercano(z, ss.capa.toUpperCase(), Date.parse(f.fecha));
+    if (p) {
+      overlay = L.imageOverlay(p.png, [[p.bounds.s, p.bounds.w], [p.bounds.n, p.bounds.e]], { opacity: st.opac }).addTo(map);
+      nota = `<small>Escena ${ss.capa.toUpperCase()} usada: ${fecha(p.fecha)} (${p.madurez})</small>`;
+    } else nota = `<small style="color:#ff8f8f">No hay escenas ${ss.capa.toUpperCase()} procesadas para esta zona. Corre generar_mapa.py sin --sin-extra.</small>`;
+    $('legend').innerHTML = LEY_SERIE[ss.capa]() + nota;
+  } else {
+    overlay = L.imageOverlay(f.capas[ss.capa], b, { opacity: st.opac }).addTo(map);
+  }
+  cuadro && map.removeLayer(cuadro);
+  cuadro = L.rectangle(b, { color: '#ffd84c', weight: 2, fill: false, interactive: false }).addTo(map);
+  const ev = M.eventos.find((e) => e.id === f.evento_previo);
+  $('tNoticia').innerHTML = ev ? `Después de <b>${ev.id}</b>: ${ev.titular} — <a href="${M.noticias[ev.fuente]}" target="_blank" rel="noopener">noticia ${ev.fuente}</a>`
+    : (k === 0 ? 'Fecha de referencia: todo se compara con esta escena.' : 'Antes de los eventos con noticia en esta zona.');
+  $('tFechas').innerHTML = `Fecha ${k + 1} de ${s.frames.length} · referencia ${fecha(s.base)}`;
+  const G = [
+    ['#1e78ff', 'Agua', [['Agua en esta fecha', m.agua_km2, 'km²'], ['Agua nueva vs 1.ª fecha', m.agua_nueva_vs_base_km2, 'km²']]],
+    ['#5ab4ac', 'Humedad del suelo (vs 1.ª fecha)', [['Δε′ (mediana)', m.deps_tierra_med, 'Dubois [A]'], ['Δσ⁰ HH (mediana)', m.dsigma_tierra_med_db, 'dB'], ['Suelo más húmedo', m.suelo_humedecido_km2, 'km²']]],
+    ['#28c85a', 'Vegetación', [['Veg. inundada nueva', m.veg_inundada_nueva_km2, 'km²'], ['HV−HH', m.hvhh_db, 'dB'], ['Estructuras (descartado)', m.estructuras_km2, 'km²']]],
+  ];
+  $('stats').innerHTML = G.map(([col, t, S]) => `<h4><i style="background:${col}"></i>${t}</h4>` +
+    S.map(([kk, v, u]) => `<div class="stat"><span class="label">${kk}</span><b>${fmt(v)}</b><small>${u}</small></div>`).join('')).join('');
+  const asf = `<a href="https://search.asf.alaska.edu/#/?searchType=List%20Search&searchList=${f.granulo}" target="_blank" rel="noopener">${f.granulo}</a>`;
+  const sme = productoCercano(z, 'SME2', Date.parse(f.fecha)), gun = productoCercano(z, 'GUNW', Date.parse(f.fecha));
+  if (sme || gun) {
+    $('stats').innerHTML += `<h4><i style="background:#4fb3bf"></i>Otros productos NISAR (escena más cercana)</h4>` +
+      `<div class="stat"><span class="label">Humedad SME2 (mediana)</span><b>${sme ? fmt(sme.metricas.humedad_med_m3m3, 3) : '—'}</b><small>m³/m³${sme ? ' · ' + fechaCorta(sme.fecha) : ''}</small></div>` +
+      `<div class="stat"><span class="label">Coherencia GUNW (mediana)</span><b>${gun ? fmt(gun.metricas.coherencia_med) : '—'}</b><small>${gun ? fmt(gun.metricas.frac_coherencia_baja * 100, 0) + ' % baja · ' + fechaCorta(gun.fecha) : ''}</small></div>`;
+  }
+  if (f.calidad && f.calidad.sospechosa) $('stats').insertAdjacentHTML('afterbegin', `<div class="qa" style="grid-column:1/-1;background:#3a1a1a;color:#ff8f8f;border-radius:6px;padding:6px 8px">⚠ ${f.calidad.nota}</div>`);
+  $('tGranulos').innerHTML = asf;
+  const prev = k > 0 ? s.frames[k - 1] : null;
+  const tA = prev ? Date.parse(prev.fecha) : Date.parse(f.fecha) - 20 * DIA;
+  $('cronica').innerHTML = cronicaHTML(z, tA, Date.parse(f.fecha), {
+    dagua: prev ? (m.agua_km2 ?? 0) - (prev.metricas.agua_km2 ?? 0) : null,
+    veg: m.veg_inundada_nueva_km2, suelo: m.suelo_humedecido_km2,
+  }, f.calidad && f.calidad.sospechosa ? f.calidad.nota : null).replace('<h5>', k === 0 ? '<h5>Fecha de referencia · noticias de los 20 días previos<br>' : '<h5>Entre la pasada anterior y esta · ');
+  actualizarPines(Date.parse(f.fecha));
+  if (chart && st.modo === 'serie') chart.draw();
+}
+
+function playSerie() {
+  $('tPlay').textContent = '⏸';
+  ss.play = setInterval(() => { const n = serieActual().frames.length; fechaSerie((ss.f + 1) % n); }, 1300);
+}
+function pararSerie() { clearInterval(ss.play); ss.play = null; $('tPlay') && ($('tPlay').textContent = '▶'); }
+
+function graficoSerie() {
+  const s = serieActual();
+  const evs = M.eventos.filter((e) => e.zonas.includes(s.zona));
+  const t0 = Date.parse(s.frames[0].fecha) - 3 * 864e5, t1 = Date.parse(s.frames[s.frames.length - 1].fecha) + 3 * 864e5;
+  const lluvia = (M.lluvia || {})[s.zona];
+  const barrasLluvia = lluvia ? lluvia.fechas.map((f, k) => ({ x: Date.parse(f + 'T12:00:00-05:00'), y: lluvia.mm[k] }))
+    .filter((p) => p.x >= t0 && p.x <= t1) : [];
+  const ex = ((M.extra || {})[s.zona]) || {};
+  const pts = (key) => s.frames.map((f) => ({ x: Date.parse(f.fecha), y: f.metricas[key] }));
+  const lineas = {
+    id: 'lineas',
+    afterDraw(c) {
+      const { ctx, chartArea: a, scales: { x } } = c;
+      ctx.save();
+      evs.forEach((e) => {
+        const px = x.getPixelForValue(Date.parse(e.inicio));
+        if (px < a.left || px > a.right) return;
+        ctx.strokeStyle = '#ff6b6b'; ctx.setLineDash([4, 3]); ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+        ctx.fillStyle = '#ff6b6b'; ctx.font = '10px sans-serif'; ctx.fillText(e.id, px + 3, a.top + 10);
+      });
+      if (st.modo === 'serie' && serieActual()) {
+        const px = x.getPixelForValue(Date.parse(serieActual().frames[ss.f].fecha));
+        ctx.setLineDash([]); ctx.strokeStyle = '#ffd84c'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(px, a.top); ctx.lineTo(px, a.bottom); ctx.stroke();
+      }
+      ctx.restore();
+    },
+  };
+  const L_ = (lab, data, col, extra = {}) => ({ type: 'line', label: lab, data, borderColor: col, backgroundColor: col, tension: 0.2, pointRadius: 3, yAxisID: 'y', ...extra });
+  const datasets = [
+    L_('Agua (km²)', pts('agua_km2'), '#1e78ff'), L_('Agua nueva vs 1.ª (km²)', pts('agua_nueva_vs_base_km2'), '#00d2ff'),
+    L_('Veg. inundada nueva (km²)', pts('veg_inundada_nueva_km2'), '#28c85a'), L_('Suelo más húmedo (km²)', pts('suelo_humedecido_km2'), '#aa5aff'),
+  ];
+  if ((ex.SME2 || []).length) datasets.push(L_('Humedad SME2 (m³/m³ ×100)', ex.SME2.map((f) => ({ x: Date.parse(f.fecha), y: f.metricas.humedad_med_m3m3 == null ? null : f.metricas.humedad_med_m3m3 * 100 })), '#4fb3bf', { borderDash: [5, 3] }));
+  if ((ex.GUNW || []).length) datasets.push(L_('Coherencia GUNW (×100)', ex.GUNW.map((f) => ({ x: Date.parse(f.fecha), y: f.metricas.coherencia_med == null ? null : f.metricas.coherencia_med * 100 })), '#f0a35e', { borderDash: [2, 3] }));
+  if (barrasLluvia.length) datasets.push({ type: 'bar', label: 'Lluvia diaria, reanálisis Open-Meteo (mm)', data: barrasLluvia, backgroundColor: 'rgba(120,170,255,.35)', yAxisID: 'y1', barThickness: 3 });
+  if (chart) chart.destroy();
+  const fmtX = (v) => new Date(v).toLocaleDateString('es-PE', { timeZone: 'America/Lima', day: '2-digit', month: 'short' });
+  chart = new Chart($('chart'), {
+    data: { datasets },
+    options: { maintainAspectRatio: false, animation: false, parsing: false,
+      onClick: (e, els, c) => {
+        const t = c.scales.x.getValueForPixel(e.x);
+        let k = 0; s.frames.forEach((f, i) => { if (Math.abs(Date.parse(f.fecha) - t) < Math.abs(Date.parse(s.frames[k].fecha) - t)) k = i; });
+        fechaSerie(k);
+      },
+      scales: {
+        x: { type: 'linear', min: t0, max: t1, ticks: { color: '#8b9bab', font: { size: 10 }, callback: fmtX, maxTicksLimit: 8 }, grid: { color: '#1a2633' } },
+        y: { position: 'left', ticks: { color: '#8b9bab' }, grid: { color: '#1a2633' } },
+        y1: { position: 'right', display: barrasLluvia.length > 0, ticks: { color: '#7aa6ff' }, grid: { display: false }, title: { display: true, text: 'mm/día', color: '#7aa6ff', font: { size: 10 } } },
+      },
+      plugins: { legend: { labels: { color: '#8b9bab', boxWidth: 10, font: { size: 10 } } },
+        tooltip: { callbacks: { title: (it) => fmtX(it[0].parsed.x) } } } },
+    plugins: [lineas],
+  });
+}
+
+function construirLista() {
+  const porRegion = {};
+  Object.entries(M.zonas).forEach(([z, v]) => (porRegion[v.region] = porRegion[v.region] || []).push(z));
+  let h = '';
+  Object.entries(porRegion).forEach(([reg, zs]) => {
+    h += `<h3>${reg}</h3>`;
+    zs.forEach((z) => {
+      const idx = M.capas.map((c, i) => [c, i]).filter(([c]) => c.zona === z);
+      if (!idx.length) { h += `<div class="nodata">${M.zonas[z].nombre}: sin par NISAR</div>`; return; }
+      idx.forEach(([c, i]) => {
+        h += `<button data-i="${i}"><b>${c.evento}</b> · ${M.zonas[z].nombre}<small>órbita ${c.geom} · inundación nueva ${fmt(c.metricas.agua_ganada_km2)} km²</small></button>`;
+      });
+    });
+  });
+  $('lista').innerHTML = h;
+  $('lista').querySelectorAll('button').forEach((b) => b.onclick = () => seleccionar(+b.dataset.i));
+}
+
+function construirEventos() {
+  $('eventos').innerHTML = M.eventos.map((e) => {
+    const n = M.capas.filter((c) => c.evento === e.id).length;
+    return `<button class="ev" data-e="${e.id}"><b>${e.id}</b> · ${fecha(e.inicio)}<br>${e.titular}<small>${n} par(es) NISAR · fuente ${e.fuente}</small></button>`;
+  }).join('');
+  $('eventos').querySelectorAll('.ev').forEach((b) => b.onclick = () => {
+    const k = M.capas.findIndex((c) => c.evento === b.dataset.e);
+    if (k >= 0) seleccionar(k);
+    else { marcarEvento(b.dataset.e); $('tTitulo').textContent = b.dataset.e + ': sin par NISAR analizado'; }
+  });
+}
+
+function marcarEvento(id) {
+  st.ev = id;
+  $('eventos').querySelectorAll('.ev').forEach((b) => b.classList.toggle('on', b.dataset.e === id));
+}
+
+function seleccionar(i) {
+  st.i = i;
+  const c = M.capas[i], z = M.zonas[c.zona], e = M.eventos.find((x) => x.id === c.evento), m = c.metricas;
+  const b = [[c.bounds.s, c.bounds.w], [c.bounds.n, c.bounds.e]];
+  map.fitBounds(b, { padding: [20, 20] });
+  cuadro && map.removeLayer(cuadro);
+  cuadro = L.rectangle(b, { color: '#ffd84c', weight: 2, fill: false, interactive: false }).addTo(map);
+  ponerCapa(st.capa);
+  $('lista').querySelectorAll('button').forEach((x) => x.classList.toggle('on', +x.dataset.i === i));
+  marcarEvento(c.evento);
+
+  $('tTitulo').textContent = `${c.evento} · ${z.nombre} (${z.region})`;
+  $('tNoticia').innerHTML = `${e.titular} — <a href="${M.noticias[e.fuente]}" target="_blank" rel="noopener">noticia ${e.fuente}</a>`;
+  $('tFechas').innerHTML = `Antes: ${fecha(c.antes)}<br>Después: ${fecha(c.despues)}<br>Órbita (track_dir_frame): ${c.geom}<br>${c.theta || ''}`;
+  const G = [
+    ['#1e78ff', 'Agua', [['Agua antes', m.agua_antes_km2, 'km²'], ['Agua después', m.agua_despues_km2, 'km²'],
+      ['Inundación nueva', m.agua_ganada_km2, 'km²'], ['Agua retirada', m.agua_perdida_km2, 'km²'],
+      ['Umbral antes', m.umbral_antes_db, 'dB (Otsu)'], ['Umbral después', m.umbral_despues_db, 'dB (Otsu)']]],
+    ['#5ab4ac', 'Humedad del suelo', [['Δε′ (mediana)', m.deps_tierra_med, 'Dubois [A]'], ['Δσ⁰ HH (mediana)', m.dsigma_tierra_med_db, 'dB'],
+      ['Suelo más húmedo', m.suelo_humedecido_km2, 'km²'], ['Suelo más seco', m.suelo_secado_km2, 'km²']]],
+    ['#28c85a', 'Vegetación', [['Vegetación inundada', m.veg_inundada_despues_km2, 'km²'], ['ΔHV (mediana)', m.dhv_tierra_med_db, 'dB'],
+      ['HV−HH antes', m.hvhh_antes_db, 'dB'], ['HV−HH después', m.hvhh_despues_db, 'dB']]],
+    ['#8b9bab', 'Calidad', [['Cobertura válida', m.cobertura * 100, '%'], ['Looks (mediana)', m.looks_med, '']]],
+  ];
+  $('stats').innerHTML = G.map(([col, t, S]) => `<h4><i style="background:${col}"></i>${t}</h4>` +
+    S.map(([k, v, u]) => `<div class="stat"><span class="label">${k}</span><b>${fmt(v)}</b><small>${u}</small></div>`).join('')).join('');
+  const asf = (g) => g ? `<a href="https://search.asf.alaska.edu/#/?searchType=List%20Search&searchList=${g}" target="_blank" rel="noopener">${g}</a>` : '—';
+  $('tGranulos').innerHTML = `Antes: ${asf(c.granulo_antes)}<br><br>Después: ${asf(c.granulo_despues)}`;
+  $('cronica').innerHTML = cronicaHTML(c.zona, Date.parse(c.antes), Date.parse(c.despues),
+    { dagua: m.agua_ganada_km2, veg: m.veg_inundada_nueva_km2, suelo: m.suelo_humedecido_km2 }, null)
+    .replace('<h5>', '<h5>Entre las dos pasadas del par · ');
+  actualizarPines(Date.parse(c.despues));
+  grafico(c.evento);
+}
+
+function ponerCapa(capa) {
+  st.capa = capa;
+  document.querySelectorAll('#segCapa button').forEach((b) => b.classList.toggle('on', b.dataset.c === capa));
+  $('legend').innerHTML = LEYENDA[capa];
+  if (st.i < 0) return;
+  const c = M.capas[st.i];
+  const b = [[c.bounds.s, c.bounds.w], [c.bounds.n, c.bounds.e]];
+  if (overlay) map.removeLayer(overlay);
+  overlay = L.imageOverlay(c.capas[capa], b, { opacity: st.opac }).addTo(map);
+}
+
+function iniciarBlink() {
+  const par = PAREJA[st.capa.split('_')[0]] || PAREJA.clases;
+  let k = 0;
+  ponerCapa(par[0]);
+  st.blink = setInterval(() => { k ^= 1; ponerCapa(par[k]); }, 1200);
+  $('btnParpadeo').textContent = '⏸ Detener';
+}
+function pararBlink() { clearInterval(st.blink); st.blink = null; $('btnParpadeo').textContent = '▶ Antes/después'; }
+
+function grafico(ev) {
+  const sel = M.capas.filter((c) => c.evento === ev);
+  const data = {
+    labels: sel.map((c) => `${M.zonas[c.zona].nombre.split(' –')[0]} ${c.geom}`),
+    datasets: [
+      { label: 'Inundación nueva', data: sel.map((c) => c.metricas.agua_ganada_km2), backgroundColor: '#00c8ff' },
+      { label: 'Agua retirada', data: sel.map((c) => c.metricas.agua_perdida_km2), backgroundColor: '#ff8c00' },
+      { label: 'Veg. inundada', data: sel.map((c) => c.metricas.veg_inundada_despues_km2), backgroundColor: '#28c85a' },
+      { label: 'Suelo más húmedo', data: sel.map((c) => c.metricas.suelo_humedecido_km2), backgroundColor: '#aa5aff' },
+    ],
+  };
+  if (chart) { chart.data = data; chart.update(); return; }
+  chart = new Chart($('chart'), {
+    type: 'bar', data,
+    options: {
+      maintainAspectRatio: false,
+      scales: { x: { ticks: { color: '#8b9bab', font: { size: 10 } }, grid: { color: '#1a2633' } }, y: { ticks: { color: '#8b9bab' }, grid: { color: '#1a2633' } } },
+      plugins: { legend: { labels: { color: '#8b9bab', boxWidth: 10, font: { size: 11 } } } },
+    },
+  });
+}
+
+window.addEventListener('load', init);
+</script>
+</body>
+</html>

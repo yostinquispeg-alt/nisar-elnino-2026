@@ -1,0 +1,13 @@
+﻿{
+  "files.exclude": {
+    ".env": true,
+    ".vscode": true,
+    ".gitignore": true,
+    "ocultar.ps1": true,
+    "cache": true,
+    "**/__pycache__": true,
+    "**/.ipynb_checkpoints": true,
+    "**/.gitkeep": true
+  },
+  "jupyter.notebookFileRoot": "${fileDirname}"
+}

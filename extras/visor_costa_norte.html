@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>NISAR · El Niño 2026 en Tumbes y Piura — visor de escenas reales</title>
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+<script src="catalogo.js"></script>
+<style>
+  :root { --bg:#0e1621; --panel:#152131; --line:#24364d; --txt:#e6edf5; --mut:#93a4b8; --acc:#4da3ff; --ev:#ff6b5a; --warn:#ffcf5a; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); }
+  header { padding:10px 16px; border-bottom:1px solid var(--line); display:flex; flex-wrap:wrap; gap:12px; align-items:center; }
+  header h1 { font-size:16px; margin:0 12px 0 0; font-weight:600; }
+  label { color:var(--mut); font-size:12px; display:flex; flex-direction:column; gap:3px; }
+  select, button, input[type=range] { font:inherit; }
+  select, button { background:var(--panel); color:var(--txt); border:1px solid var(--line); border-radius:6px; padding:5px 8px; }
+  button { cursor:pointer; } button:hover { border-color:var(--acc); }
+  main { display:grid; grid-template-columns: 1fr 360px; height: calc(100vh - 150px); min-height:480px; }
+  #map { height:100%; }
+  aside { border-left:1px solid var(--line); padding:12px 14px; overflow:auto; background:var(--panel); }
+  aside h2 { font-size:13px; text-transform:uppercase; letter-spacing:.04em; color:var(--mut); margin:14px 0 6px; }
+  .kv { display:grid; grid-template-columns: 110px 1fr; gap:2px 8px; font-size:13px; }
+  .kv div:nth-child(odd) { color:var(--mut); }
+  .mono { font-family: ui-monospace, Consolas, monospace; font-size:11px; word-break:break-all; color:var(--mut); }
+  .ev { border-left:3px solid var(--ev); padding:4px 8px; margin:6px 0; background:#1b2a3d; border-radius:0 6px 6px 0; font-size:13px; }
+  .ev .btns { margin-top:4px; display:flex; gap:6px; }
+  .ev button { padding:2px 8px; font-size:12px; }
+  .warn { background:#2a2614; border:1px solid #5a4c1c; color:#f3e3a5; border-radius:6px; padding:8px 10px; font-size:12px; margin:8px 0; }
+  #timeline { padding:8px 16px 4px; border-top:1px solid var(--line); }
+  #tl { position:relative; height:46px; }
+  #tl .axis { position:absolute; left:0; right:0; top:22px; height:2px; background:var(--line); }
+  #tl .gap { position:absolute; top:12px; height:22px; background:repeating-linear-gradient(45deg,#2a2f38,#2a2f38 4px,#1d222a 4px,#1d222a 8px); border-radius:3px; }
+  #tl .sc { position:absolute; top:15px; width:3px; height:16px; background:var(--acc); border-radius:2px; cursor:pointer; transform:translateX(-1px); }
+  #tl .sc.v { background:#7ee0a5; } #tl .sc.on { height:24px; top:11px; background:#fff; }
+  #tl .evm { position:absolute; top:0; width:0; height:46px; border-left:2px dashed var(--ev); }
+  #tl .evm span { position:absolute; top:-2px; left:3px; font-size:10px; color:var(--ev); }
+  #tl .lab { position:absolute; top:34px; font-size:10px; color:var(--mut); transform:translateX(-50%); }
+  #slider { width:100%; }
+  .row { display:flex; gap:10px; align-items:center; }
+  #status { color:var(--mut); font-size:12px; }
+  .leg { display:inline-block; width:10px; height:10px; border-radius:2px; margin-right:4px; vertical-align:middle; }
+  a { color:var(--acc); }
+</style>
+</head>
+<body>
+<header>
+  <h1>NISAR · El Niño 2026 · Tumbes y Piura</h1>
+  <label>Zona documentada<select id="zona"></select></label>
+  <label>Órbita (track · dirección · frame)<select id="geom"></select></label>
+  <label>Opacidad<input id="opac" type="range" min="0" max="100" value="85"></label>
+  <div class="row" style="align-self:flex-end">
+    <button id="prev">◀</button><button id="play">▶ Reproducir</button><button id="next">▶</button>
+  </div>
+  <span id="status"></span>
+</header>
+<main>
+  <div id="map"></div>
+  <aside>
+    <div class="warn"><b>Vista previa, no medición.</b> Las imágenes son las <i>browse</i> <code>_LATLON.png</code> públicas de cada escena GCOV.
+      Según la guía oficial, estas vistas previas «can be mislocated up to many kilometers» (NISAR Data User Guide, <a href="https://nisar-docs.asf.alaska.edu/product-known-issues/">Product Known Issues</a>).
+      Sus colores no están calibrados y su escala de color no está documentada en las páginas que revisé. Las cifras reales salen del notebook leyendo γ⁰ del HDF5.</div>
+    <h2>Escena</h2>
+    <div class="kv" id="info"></div>
+    <h2>Eventos documentados en esta zona</h2>
+    <div id="eventos"></div>
+    <h2>Leyenda de la línea de tiempo</h2>
+    <div style="font-size:12px;color:var(--mut)">
+      <span class="leg" style="background:var(--acc)"></span>PROVISIONAL &nbsp;
+      <span class="leg" style="background:#7ee0a5"></span>VALIDATED &nbsp;
+      <span class="leg" style="background:var(--ev)"></span>evento (noticia)<br>
+      <span class="leg" style="background:#2a2f38"></span>corte permanente de datos NISAR (27 jul–10 ago 2026, <a href="https://www.earthdata.nasa.gov/data/alerts-outages/permanent-nisar-instrument-data-gap">Earthdata</a>)
+    </div>
+    <h2>Fuentes</h2>
+    <div style="font-size:12px;color:var(--mut)">
+      Escenas: catálogo CMR de NASA, consulta del 14 nov 2026. Madurez y precaución al mezclar PROVISIONAL y VALIDATED:
+      <a href="https://nisar-docs.asf.alaska.edu/products-overview/">Data Products Overview</a>.
+      Producción PROVISIONAL pausada desde el 23 oct 2026, con atrasado después del 6 nov:
+      <a href="https://www.earthdata.nasa.gov/data/alerts-outages/nisar-provisional-data-product-production-paused">Earthdata</a>.
+      Las coordenadas de las zonas son puntos aproximados elegidos para la consulta.
+    </div>
+  </aside>
+</main>
+<div id="timeline">
+  <div id="tl"></div>
+  <input id="slider" type="range" min="0" max="0" value="0">
+</div>
+
+<script>
+const ZONAS = {
+  tumbes:    { nombre:"Tumbes – ciudad", region:"Tumbes", p:[-3.57,-80.45] },
+  zarumilla: { nombre:"Zarumilla – Aguas Verdes (Puerto Perú)", region:"Tumbes", p:[-3.48,-80.25] },
+  pizarro:   { nombre:"Puerto Pizarro", region:"Tumbes", p:[-3.50,-80.39] },
+  piura:     { nombre:"Piura – Castilla", region:"Piura", p:[-5.19,-80.63] },
+  chulucanas:{ nombre:"Chulucanas", region:"Piura", p:[-5.09,-80.16] },
+  salitral:  { nombre:"Salitral – Morropón (quebrada Serrán)", region:"Piura", p:[-5.34,-79.83] },
+  sullana:   { nombre:"Sullana", region:"Piura", p:[-4.90,-80.69] },
+  ayabaca:   { nombre:"Ayabaca (sierra)", region:"Piura", p:[-4.64,-79.71] },
+};
+const R_DEG = 0.06;
+// Eventos: fechas y hechos de noticias abiertas el 14 nov 2026 (hora de Lima, UTC−5)
+const EVENTOS = [
+  { id:"E1", ini:"2026-10-19T18:00-05:00", fin:"2026-10-20T23:59-05:00", zonas:["piura","chulucanas","sullana"],
+    txt:"Lluvias desde la noche del 19 oct; ~30 cm de agua en el mercado de Chulucanas; también Castilla y Sullana.", src:"Caretas, 20 oct 2026", url:"https://caretas.pe/?p=840084" },
+  { id:"E2", ini:"2026-10-23T00:00-05:00", fin:"2026-10-23T23:59-05:00", zonas:["tumbes","zarumilla","pizarro"],
+    txt:"Más de 8 h de lluvia; Zarumilla, Puerto Pizarro (52 mm según Senamhi) y Tumbes ciudad inundados.", src:"América TV, 23 oct 2026", url:"https://www.americatv.com.pe/noticias/amp/actualidad/tumbes-lluvia-mas-ocho-horas-provoca-inundaciones-n523751" },
+  { id:"E3", ini:"2026-10-27T00:00-05:00", fin:"2026-10-27T23:59-05:00", zonas:["zarumilla"],
+    txt:"Estación El Salto (Zarumilla): 102 mm en un día.", src:"Andina, 2 nov 2026", url:"https://andina.pe/agencia/noticia-el-nino-tumbes-endures-extraordinary-rainfall-of-up-to-110-liters-per-square-meter-1098315.aspx" },
+  { id:"E4", ini:"2026-11-01T18:00-05:00", fin:"2026-11-02T23:59-05:00", zonas:["zarumilla","tumbes"],
+    txt:"Desborde del río Zarumilla en Puerto Perú (más de 300 familias); río Tumbes 1 021,33 m³/s en El Tigre.", src:"Caretas, 3 nov 2026", url:"https://caretas.pe/?p=842604" },
+  { id:"E5", ini:"2026-11-02T00:00-05:00", fin:"2026-11-02T23:59-05:00", zonas:["salitral","piura"],
+    txt:"Quebrada Serrán activada en Salitral (Morropón); drenaje en Las Azucenas y en la av. Sánchez Cerro (Piura).", src:"El Peruano, 2 nov 2026", url:"https://elperuano.pe/noticia/308191-fuerzas-armadas-activan-puente-terrestre-para-evitar-que-morropon-quede-aislada-por-el-nino" },
+];
+const GAP = [Date.parse("2026-07-27T22:03:25Z"), Date.parse("2026-08-10T00:55:27Z")];
+
+// ---------------------------------------------------------------- catálogo
+const CAT = window.NISAR_CATALOGO;
+function parse(n) {
+  const m = n.match(/GCOV_(\d{3})_(\d{3})_([AD])_(\d{3})_(\d{4})_([A-Z]{4})_([AM])_(\d{8}T\d{6})_\d{8}T\d{6}_(P\d{5})_.*_(\d{3})$/);
+  const s = m[8];
+  return { ciclo:m[1], track:m[2], dir:m[3], frame:m[4], mode:m[5], pol:m[6], crid:m[9], ctr:m[10],
+           t: Date.parse(`${s.slice(0,4)}-${s.slice(4,6)}-${s.slice(6,8)}T${s.slice(9,11)}:${s.slice(11,13)}:${s.slice(13,15)}Z`),
+           geom:`${m[2]} · ${m[3]==="A"?"ascendente":"descendente"} · ${m[4]}` };
+}
+const G = CAT.g.map(([n, c, poly]) => ({ nombre:n, mad: c==="V" ? "VALIDATED" : "PROVISIONAL", poly, ...parse(n),
+  col: c==="V" ? "NISAR_L2_GCOV_V1" : "NISAR_L2_GCOV_PROVISIONAL_V1" }));
+const browseURL = g => `https://nisar.asf.earthdatacloud.nasa.gov/BROWSE/${g.col}/${g.nombre}/${g.nombre}_LATLON.png`;
+const h5URL = g => `https://nisar.asf.earthdatacloud.nasa.gov/NISAR/${g.col}/${g.nombre}/${g.nombre}.h5`;
+
+// ---------------------------------------------------------------- mapa
+const map = L.map("map", { zoomControl:true });
+L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", { maxZoom:18, attribution:"© OpenStreetMap" }).addTo(map);
+let overlay = null, caja = null, footprint = null, lista = [], idx = 0, timer = null;
+const cache = new Map();
+
+// Ajusta la browse LATLON al contorno CMR: extremos del área opaca ↔ vértices extremos del polígono.
+async function georef(g) {
+  if (cache.has(g.nombre)) return cache.get(g.nombre);
+  const blob = await (await fetch(browseURL(g))).blob();
+  const bmp = await createImageBitmap(blob);
+  const W = bmp.width, H = bmp.height, cv = new OffscreenCanvas(W, H), cx = cv.getContext("2d");
+  cx.drawImage(bmp, 0, 0); const d = cx.getImageData(0, 0, W, H).data, A = (x, y) => d[(y*W + x)*4 + 3];
+  let top=null, bot=null, lef=null, rig=null;
+  for (let y=0; y<H && !top; y+=1) for (let x=0; x<W; x+=1) if (A(x,y)>0) { top=[x,y]; break; }
+  for (let y=H-1; y>=0 && !bot; y-=1) for (let x=0; x<W; x+=1) if (A(x,y)>0) { bot=[x,y]; break; }
+  for (let x=0; x<W && !lef; x+=1) for (let y=0; y<H; y+=1) if (A(x,y)>0) { lef=[x,y]; break; }
+  for (let x=W-1; x>=0 && !rig; x-=1) for (let y=0; y<H; y+=1) if (A(x,y)>0) { rig=[x,y]; break; }
+  const P = g.poly, byLat = [...P].sort((a,b)=>b[0]-a[0]), byLon = [...P].sort((a,b)=>a[1]-b[1]);
+  const vN = byLat[0], vS = byLat[3], vW = byLon[0], vE = byLon[3];
+  const sx = (rig[0]-lef[0]) / (vE[1]-vW[1]), lon0 = vW[1] - lef[0]/sx;     // px por grado (lon)
+  const sy = (bot[1]-top[1]) / (vN[0]-vS[0]), lat0 = vN[0] + top[1]/sy;     // px por grado (lat)
+  const bounds = [[lat0 - H/sy, lon0], [lat0, lon0 + W/sx]];
+  // residuo: posiciones predichas de los otros ejes frente a las medidas
+  const pred = v => [ (v[1]-lon0)*sx, (lat0-v[0])*sy ];
+  const res = Math.max(Math.abs(pred(vN)[0]-top[0]), Math.abs(pred(vS)[0]-bot[0]), Math.abs(pred(vW)[1]-lef[1]), Math.abs(pred(vE)[1]-rig[1]));
+  const kmPx = 111.32 / sx;
+  const out = { url: URL.createObjectURL(blob), bounds, resPx: res, resKm: res*kmPx, W, H };
+  cache.set(g.nombre, out); return out;
+}
+
+function zonaCaja(z) { const [la, lo] = ZONAS[z].p; return [[la-R_DEG, lo-R_DEG], [la+R_DEG, lo+R_DEG]]; }
+
+function llenarZonas() {
+  const sel = document.getElementById("zona");
+  for (const reg of ["Tumbes", "Piura"]) {
+    const og = document.createElement("optgroup"); og.label = reg;
+    for (const [k, z] of Object.entries(ZONAS)) if (z.region === reg) og.append(new Option(z.nombre, k));
+    sel.append(og);
+  }
+}
+function llenarGeoms() {
+  const z = zona(), gs = CAT.zg[z].map(i => G[i]);
+  const sel = document.getElementById("geom"); sel.innerHTML = "";
+  const cuenta = {}; gs.forEach(g => cuenta[g.geom] = (cuenta[g.geom]||0) + 1);
+  Object.entries(cuenta).sort((a,b)=>b[1]-a[1]).forEach(([k,n]) => sel.append(new Option(`${k}  (${n} escenas)`, k)));
+}
+const zona = () => document.getElementById("zona").value;
+const geom = () => document.getElementById("geom").value;
+
+function construirLista() {
+  const z = zona();
+  const vistos = new Set();
+  lista = CAT.zg[z].map(i => G[i]).filter(g => g.geom === geom())
+    .sort((a,b) => a.t - b.t || b.ctr.localeCompare(a.ctr))
+    .filter(g => { const k = g.t; if (vistos.has(k)) return false; vistos.add(k); return true; });   // un producto por fecha (mayor contador)
+  const sl = document.getElementById("slider"); sl.max = Math.max(0, lista.length-1); idx = Math.min(idx, lista.length-1);
+  if (caja) caja.remove();
+  caja = L.rectangle(zonaCaja(z), { color:"#ffcf5a", weight:2, fill:false, dashArray:"6 4" }).addTo(map);
+  map.fitBounds(caja.getBounds().pad(1.2));
+  dibujarTimeline(); dibujarEventos(); mostrar(idx);
+}
+
+function dibujarTimeline() {
+  const tl = document.getElementById("tl"); tl.innerHTML = '<div class="axis"></div>';
+  if (!lista.length) return;
+  const t0 = Date.parse("2026-06-15T00:00:00Z"), t1 = Date.parse("2026-11-15T00:00:00Z");
+  const X = t => ((t - t0) / (t1 - t0) * 100) + "%";
+  const gap = document.createElement("div"); gap.className = "gap"; gap.style.left = X(GAP[0]);
+  gap.style.width = ((GAP[1]-GAP[0])/(t1-t0)*100) + "%"; gap.title = "Corte permanente de datos NISAR"; tl.append(gap);
+  const MES = { 6:"1 jul", 7:"1 ago", 8:"1 set", 9:"1 oct", 10:"1 nov" };
+  for (const m of [6,7,8,9,10]) { const l = document.createElement("div"); l.className = "lab"; l.style.left = X(Date.UTC(2026, m, 1)); l.textContent = MES[m]; tl.append(l); }
+  EVENTOS.filter(e => e.zonas.includes(zona())).forEach(e => { const d = document.createElement("div"); d.className="evm";
+    d.style.left = X(Date.parse(e.ini)); d.innerHTML = `<span>${e.id}</span>`; d.title = e.txt; tl.append(d); });
+  lista.forEach((g, i) => { const s = document.createElement("div"); s.className = "sc" + (g.mad==="VALIDATED"?" v":"") + (i===idx?" on":"");
+    s.style.left = X(g.t); s.title = new Date(g.t).toISOString().slice(0,10); s.onclick = () => mostrar(i); tl.append(s); });
+}
+
+function dibujarEventos() {
+  const box = document.getElementById("eventos"); box.innerHTML = "";
+  const evs = EVENTOS.filter(e => e.zonas.includes(zona()));
+  if (!evs.length) { box.textContent = "Sin eventos vinculados."; return; }
+  for (const e of evs) {
+    const antes = [...lista].reverse().find(g => g.t < Date.parse(e.ini));
+    const desp = lista.find(g => g.t > Date.parse(e.fin));
+    const div = document.createElement("div"); div.className = "ev";
+    div.innerHTML = `<b>${e.id}</b> · ${e.ini.slice(0,10)}<br>${e.txt}<br><a href="${e.url}" target="_blank" rel="noopener">${e.src}</a>
+      <div class="btns"></div>`;
+    const b = div.querySelector(".btns");
+    const mk = (lab, g) => { const bt = document.createElement("button"); bt.textContent = g ? `${lab} ${new Date(g.t).toISOString().slice(5,10)}` : `${lab}: sin escena publicada`;
+      bt.disabled = !g; if (g) bt.onclick = () => mostrar(lista.indexOf(g)); b.append(bt); };
+    mk("Antes", antes); mk("Después", desp);
+    box.append(div);
+  }
+}
+
+async function mostrar(i) {
+  if (!lista.length) return;
+  idx = Math.max(0, Math.min(i, lista.length-1)); document.getElementById("slider").value = idx;
+  const g = lista[idx];
+  document.querySelectorAll("#tl .sc").forEach((el, k) => el.classList.toggle("on", k === idx));
+  const st = document.getElementById("status"); st.textContent = "Cargando vista previa de NASA…";
+  if (footprint) footprint.remove();
+  footprint = L.polygon(g.poly, { color:"#4da3ff", weight:1, fill:false }).addTo(map);
+  try {
+    const r = await georef(g);
+    if (lista[idx] !== g) return;
+    if (overlay) overlay.remove();
+    overlay = L.imageOverlay(r.url, r.bounds, { opacity: document.getElementById("opac").value/100 }).addTo(map);
+    caja.bringToFront();
+    st.textContent = `Ajuste al contorno CMR: residuo máx. ${r.resPx.toFixed(0)} px ≈ ${r.resKm.toFixed(1)} km`;
+    info(g, r);
+  } catch (e) { st.textContent = "No se pudo cargar la vista previa (¿sin internet?): " + e; info(g, null); }
+}
+
+function info(g, r) {
+  const lima = new Date(g.t - 5*3600e3).toISOString().replace("T"," ").slice(0,16);
+  const evPrev = EVENTOS.filter(e => e.zonas.includes(zona()) && Date.parse(e.fin) < g.t).map(e=>e.id);
+  document.getElementById("info").innerHTML = `
+    <div>Fecha (Lima)</div><div>${lima}</div>
+    <div>Órbita</div><div>${g.geom}</div>
+    <div>Ciclo</div><div>${g.ciclo}</div>
+    <div>Polarización</div><div>${g.pol === "DHDH" ? "DHDH (HH + HV)" : g.pol === "SHSH" ? "SHSH (solo HH)" : g.pol}</div>
+    <div>Madurez</div><div>${g.mad} (${g.crid})</div>
+    <div>Después de</div><div>${evPrev.length ? evPrev.join(", ") : "ningún evento de la lista"}</div>
+    <div>Ajuste</div><div>${r ? r.resPx.toFixed(0) + " px ≈ " + r.resKm.toFixed(1) + " km" : "—"}</div>
+    <div>Datos</div><div><a href="${h5URL(g)}" target="_blank" rel="noopener">HDF5 (requiere Earthdata Login)</a> · <a href="${browseURL(g)}" target="_blank" rel="noopener">vista previa</a></div>
+    <div style="grid-column:1/3" class="mono">${g.nombre}</div>`;
+}
+
+// ---------------------------------------------------------------- controles
+document.getElementById("zona").onchange = () => { idx = 0; llenarGeoms(); construirLista(); };
+document.getElementById("geom").onchange = () => { idx = 0; construirLista(); };
+document.getElementById("slider").oninput = e => mostrar(+e.target.value);
+document.getElementById("prev").onclick = () => mostrar(idx-1);
+document.getElementById("next").onclick = () => mostrar(idx+1);
+document.getElementById("opac").oninput = e => overlay && overlay.setOpacity(e.target.value/100);
+document.getElementById("play").onclick = e => {
+  if (timer) { clearInterval(timer); timer = null; e.target.textContent = "▶ Reproducir"; return; }
+  e.target.textContent = "⏸ Pausa"; timer = setInterval(() => mostrar(idx+1 >= lista.length ? 0 : idx+1), 2200);
+};
+document.addEventListener("keydown", e => { if (e.key==="ArrowRight") mostrar(idx+1); if (e.key==="ArrowLeft") mostrar(idx-1); });
+
+llenarZonas(); document.getElementById("zona").value = "zarumilla"; llenarGeoms(); construirLista();
+</script>
+</body>
+</html>
